@@ -1,0 +1,80 @@
+import {
+  "moonbitlang/async@0.21.3",
+  "moonbitlang/async@0.21.3/shell",
+  "moonbitlang/core/json",
+  "moonbitlang/x@0.5.5/fs",
+}
+
+fn remove_probe(path : String) -> Unit raise {
+  if @fs.is_dir(path) {
+    for name in @fs.read_dir(path) { remove_probe(path + "/" + name) }
+    @fs.remove_dir(path)
+  } else { @fs.remove_file(path) }
+}
+
+fn fields(path : String) -> Map[String, Json] raise {
+  guard @json.parse(@fs.read_file_to_string(path)) is Object(value) else {
+    fail("invalid probe input")
+  }
+  value
+}
+
+async fn rejected(root : String, label : String) -> Unit {
+  let code = @shell.Cmd("moonx", ["benchmarks/report.mbtx", "--root", root]).status(timeout_ms=60000)
+  guard code == 2 else { fail("unexpected report status for " + label + ": " + code.to_string()) }
+}
+
+async fn main {
+  let root = "benchmark-results/report-probes"
+  guard !@fs.path_exists(root) else { fail("stale report probes") }
+  @fs.create_dir(root)
+  defer remove_probe(root)
+  for file in ["campaign.json", "manifest.json", "conformance.json"] {
+    @fs.write_string_to_file(root + "/" + file,
+      @fs.read_file_to_string("benchmark-results/" + file))
+  }
+  @fs.create_dir(root + "/runs")
+  for runtime in ["native", "moonx-wasm"] {
+    @fs.create_dir(root + "/runs/" + runtime)
+    for file in @fs.read_dir("benchmark-results/runs/" + runtime) {
+      @fs.write_string_to_file(root + "/runs/" + runtime + "/" + file,
+        @fs.read_file_to_string("benchmark-results/runs/" + runtime + "/" + file))
+    }
+  }
+  let control = @shell.Cmd("moonx", ["benchmarks/report.mbtx", "--root", root]).status(timeout_ms=60000)
+  guard control == 0 else { fail("uncorrupted report control failed") }
+  let path = root + "/runs/native/tool_arguments-1.json"
+  let original = @fs.read_file_to_string(path)
+  let value = fields(path)
+  value["target"] = Json::string("wasm")
+  @fs.write_string_to_file(path, Json::object(value).stringify())
+  rejected(root, "a mismatched runtime/target identity")
+  @fs.write_string_to_file(path, original)
+  // Change every native repetition identically: per-runtime consistency alone
+  // must not hide a different workload from the paired Wasm measurements.
+  for file in @fs.read_dir(root + "/runs/native") {
+    if !file.has_prefix("tool_arguments-") { continue }
+    let path = root + "/runs/native/" + file
+    let value = fields(path)
+    guard value.get("eligible_case_ids") is Some(Array(ids)) && !ids.is_empty() else {
+      fail("probe workload missing")
+    }
+    ids[0] = Json::string("synthetic/different-workload/0")
+    @fs.write_string_to_file(path, Json::object(value).stringify())
+  }
+  rejected(root, "different workloads across runtimes")
+  for file in @fs.read_dir(root + "/runs/native") {
+    @fs.write_string_to_file(root + "/runs/native/" + file,
+      @fs.read_file_to_string("benchmark-results/runs/native/" + file))
+  }
+  remove_probe(root + "/runs/moonx-wasm")
+  rejected(root, "a complete campaign without Wasm measurements")
+  let state = fields(root + "/campaign.json")
+  state["status"] = Json::string("incomplete")
+  @fs.write_string_to_file(root + "/campaign.json", Json::object(state).stringify())
+  let incomplete = @shell.Cmd("moonx", ["benchmarks/report.mbtx", "--root", root]).status(timeout_ms=60000)
+  guard incomplete == 0 && @fs.read_file_to_string(root + "/report.md").contains("FAILED / INCOMPLETE") else {
+    fail("partial report did not retain explicit failure status")
+  }
+  println("report probes passed: valid control, runtime identity, paired workload, missing runtime and incomplete status")
+}

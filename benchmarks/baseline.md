@@ -1,9 +1,48 @@
-# Local native release baseline
+# Local performance baselines
 
-This is the first full-corpus/native-campaign baseline, not a cross-library
-comparison or a claim to be the fastest validator.
+These are local evidence, not cross-library comparisons or a claim to be the
+fastest validator. Historical native-only measurements below stay native-only.
 
-## Follow-up milestone: local static references
+## Current milestone: two real execution environments
+
+A full v2 campaign completed **110 measurements**: 11 scenarios × 5 fresh processes
+× 2 runtimes. Native executes via `moon run --target native --release`; moonx
+executes the timing loop and validator inside its Wasm sandbox, not a native child.
+The runner rotates scenario/runtime order, warms five batches and measures at least
+200 ms per process. Both environments passed their workload preflights, counters,
+paired case-ID checks and failure probes. Standard coverage remains **962/1301**;
+optional coverage is **535/1036**, separate from that denominator.
+
+Environment: local Darwin arm64; Moon/moonrun `0.1.20260920` (`914d7da`),
+moonc `0.10.14+7d59c7ec9`. Wasm uses the `moonx-default` script profile;
+no unverified release-profile equivalence is claimed. Native uses separate
+library/runner packages; the Wasm entry bundles the same checkout source with
+namespace/private-helper renaming. Both include per-batch clock sampling cost.
+
+| Scenario | Unit | Native median ns/op | moonx-Wasm median ns/op |
+|---|---|---:|---:|
+| Official compile | schema | 3132.56 | 8164.76 |
+| Official boolean validation | instance | 395.04 | 1284.82 |
+| Official compile + validation | instance | 1200.64 | 3467.63 |
+| Official diagnostics | instance | 443.96 | 1393.05 |
+| Tool arguments | instance | 1408.99 | 6514.39 |
+| Structured result | instance | 1405.91 | 5144.50 |
+| 1024-item array | instance | 414450.22 | 1468216.24 |
+| Unique array workload | instance | 934653.62 | 3746306.33 |
+| Composition branches | instance | 610.10 | 2697.71 |
+| Exact decimals | instance | 1530.19 | 5448.03 |
+| Pattern profile | instance | 873.42 | 4171.96 |
+
+`benchmark-results/report.md` gives separate min/max tables; detailed JSON/logs
+and generated/original source evidence remain in the artifact. Timing eligibility
+is **962 instances / 244 schemas**, the same in both environments. Neither
+startup nor source compilation is inside the workload clocks. Do not interpret
+this ratio as isolated Wasmtime overhead: backend optimization, package layout,
+clock host calls and sandbox costs differ. Portable execution is not constant
+performance across devices, and native release is a configured baseline, not
+proof of the optimal possible binary for every CPU.
+
+## Historical native-only milestone: local static references
 
 A subsequent full campaign added local `$ref`/`$defs` support and preserved the
 same pinned corpus and compiler version. All 55 native release measurements

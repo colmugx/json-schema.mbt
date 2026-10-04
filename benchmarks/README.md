@@ -1,8 +1,9 @@
-# Official conformance and native release benchmark
+# Official conformance and dual-runtime benchmark
 
 Use this guide from the **independent module root**, not its enclosing MCP
-workspace. The library remains all-target; the two measurement/test executables
-are explicitly native-only.
+workspace. The library remains all-target. The official conformance and package
+benchmark executables are native-only; a generated `.mbtx` measures the same
+validator/workload code through the actual `moonx` Wasm sandbox.
 
 ## One complete campaign
 
@@ -11,11 +12,12 @@ moonx benchmarks/run-campaign.mbtx
 ```
 
 This checks the toolchain, fetches and preserves the pinned official corpus,
-prepares a manifest, runs native check and necessary unit tests, builds both
-executables with `--target native --release`, verifies failure handling, runs
-all official cases, then measures 11 scenarios in **five serial fresh processes**
-each. The scenario order rotates between repetitions. Raw command/stdout/stderr/
-exit evidence is retained, including partial logs on failures and timeouts.
+prepares a manifest, runs native check and necessary unit tests, builds native
+release executables, checks Wasm, generates the same-checkout moonx entry, verifies
+failure handling, and runs all official cases. It measures each of 11 scenarios
+in **five serial fresh processes for each runtime** (110 measurements). Scenario
+and runtime order rotate. Raw command/stdout/stderr/exit evidence is retained,
+including partial logs on failures and timeouts.
 
 For a short smoke campaign (one repetition, 20 ms minimum measured time):
 
@@ -33,6 +35,33 @@ you want to keep. The verified official checkout can be reused. A changed pin
 requires moving/removing that checkout too, rather than silently reusing another
 revision. Fetch/build/check/test errors are fatal.
 
+## Two performance baselines, not two launcher spellings
+
+| Baseline | Measured code runs in | Execution command | Report identity |
+|---|---|---|---|
+| Portable runtime | moonx linear-memory Wasm sandbox | `moonx benchmark-results/measurement.mbtx ...` | `moonx-wasm / wasm / moonx-default` |
+| Device native | Architecture-specific compiled binary | `moon run cmd/benchmark --target native --release --output-json -- ...` | `native / native / release` |
+
+The campaign's own use of `moonx` is just orchestration. Only the first row runs
+validator work **inside** moonx. We do not label the script's default compilation
+profile as native release. Portable means portable execution, not identical timing
+across CPUs; native release is this configuration's device baseline, not a claim
+that every architecture-specific optimization flag is enabled.
+
+`prepare-moonx.mbtx` bundles production `.mbt` files and the existing runner into a
+standalone script. It removes the runner's `@schema` prefix and renames the private
+validation `fail` helper to avoid a builtin-name collision; it changes no validator
+or workload algorithm. The source list, original contents, module/package metadata
+and transformations are retained in `measurement-source.json`. Newly discovered
+root production files are included; new library subpackages, runner files or changed
+dependency versions fail generation until their ownership is updated.
+
+This avoids benchmarking an older registry release while the current checkout is
+under development. Native keeps the library/runner package boundary, whereas moonx
+uses one bundled script package. Backend, package layout, clock host calls and
+sandbox costs therefore all belong to these configurations: their ratio is **not**
+a measurement of isolated Wasmtime overhead.
+
 ## Scripts and ownership
 
 | Script / package | Responsibility |
@@ -40,15 +69,18 @@ revision. Fetch/build/check/test errors are fatal.
 | `fetch-suite.mbtx` | Fetch exact upstream Git revision; preserve original files and MIT license |
 | `prepare-suite.mbtx` | Enumerate complete draft2020-12 corpus and remotes, generate count manifest |
 | `verify-harness.mbtx` | Check missing input, empty filters, corrupt counts, invalid benchmark, timeout and compile-failure handling; remove probes |
-| `run-campaign.mbtx` | Orchestrate gates, native builds, child processes, logs and campaign state |
-| `report.mbtx` | Validate report provenance/counters, summarize conformance and repeated measurements |
+| `prepare-moonx.mbtx` | Generate the actual Wasm measurement entry from current production sources |
+| `run-campaign.mbtx` | Orchestrate gates, both runtimes, child processes, logs and campaign state |
+| `verify-report.mbtx` | Reject runtime identity mismatch, different paired workloads and missing Wasm results; remove probes |
+| `report.mbtx` | Validate provenance/counters and paired workload identity; summarize two separate performance tables |
 | `cmd/conformance` | Native official-suite runner linked to this unpublished local library |
 | `cmd/benchmark` | Native compile/boolean/diagnostic and precise-scenario measurement runner |
 
 `.mbtx` scripts always use **`moonx`**. Only orchestration scripts import
 `moonbitlang/async@0.21.3`; it is not a library runtime dependency. Native package
-runners use `moon run` or their built executables, avoiding registry imports of
-an unpublished local validator. CI bootstraps the `moonx` dispatcher itself
+runners use `moon run`, so both independent and enclosing-workspace artifact
+layouts resolve correctly. The Wasm measurement script bundles local source
+instead of importing a potentially stale registry validator. CI bootstraps the `moonx` dispatcher itself
 before any script runs; see the workflow section below.
 
 ## Official-suite TDD
@@ -110,30 +142,37 @@ records eligible IDs and exclusions. Never compare changing eligible sets as a
 stable speed index. Synthetic workloads also preflight their expected outcomes.
 
 ```sh
-moon run cmd/benchmark --target native --release --output-json -- --scenario official_validate --output benchmark-results/manual.json
-moon run cmd/benchmark --target native --release --output-json -- --scenario exact_decimal --smoke --output benchmark-results/manual-smoke.json
+moon run cmd/benchmark --target native --release --output-json -- --scenario official_validate --output benchmark-results/manual-native.json
+moonx benchmarks/prepare-moonx.mbtx
+moonx benchmark-results/measurement.mbtx --scenario official_validate --output benchmark-results/manual-moonx.json
 moonx benchmarks/report.mbtx
 ```
 
 Parsing, loading, process startup, preflight and report serialization are outside
 the clocks. Compilation is inside compile/compile-validate clocks. Boolean checks
 include numeric/depth preflight; diagnostics additionally allocate failure data.
-Timed loops include loop and correctness-counter bookkeeping. Per-batch counts
+Timed loops include loop, correctness-counter bookkeeping and the monotonic clock
+sample after each batch (including its host-call cost in Wasm). Per-batch counts
 are checked after timing so dead results or incorrect acceptance counts cannot
 silently produce a favorable result.
 
 JSON includes operations, accepted results, per-batch counters, iterations,
 elapsed microseconds, ns/op, operations/sec, mode/unit, warmup, build/target,
-revision and exact eligible IDs. Reports show **median/min/max across fresh
-processes**; these are aggregate workload costs, not per-request latency
-percentiles. Build/runtime/counter/provenance errors fail CI. Hosted-runner noise
+revision and exact eligible IDs. Measurement/campaign format v2 records both
+runtime identities; `runs/native/` and `runs/moonx-wasm/` are separate. Reports
+validate identical case IDs, per-batch counters, schema counts, exclusions and
+units across repetitions and runtimes. Each complete runtime needs all 11 scenarios
+and all repetitions; one runtime passing cannot hide a missing/failed other one.
+Reports show **separate median/min/max across fresh processes**; these are aggregate
+workload costs, not per-request latency percentiles. Historical v1 native-only
+results are not relabeled or accepted as a complete v2 campaign. Build/runtime/counter/provenance errors fail CI. Hosted-runner noise
 is not an absolute throughput gate or evidence of being the fastest library.
 
 ## Independent GitHub Actions workflow
 
 `.github/workflows/schema-benchmark.yml` runs on `main` pushes and manual dispatch
 from this independent repository root. It pins core and verifies the compiler version, defaults to
-native release/full repetitions, writes the Actions step summary and uploads
+both moonx Wasm and native release/full repetitions, writes the Actions step summary and uploads
 corpus/license/manifest/results/raw logs even when the campaign fails. Ordinary
 coverage gaps are visible without making the workflow red; unrelated failures
 are never accepted via blanket `continue-on-error`.

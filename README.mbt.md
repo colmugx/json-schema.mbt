@@ -17,9 +17,10 @@ are not implemented; schemas requesting those semantics fail compilation explici
 - Unicode code-point string lengths and an explicitly supported pattern profile.
 - Reusing one owned compiled schema for many instances.
 
-The module has no dependency on the surrounding MCP project. Its local
-`moon.work` isolates it from an enclosing MoonBit workspace, so the directory
-can be moved into its own repository.
+The module is maintained as an independent repository and has no dependency on
+MCP. Run the commands below from this module's root, including when it is checked
+out as a workspace member. Runners use `moon run` instead of assuming a fixed
+binary output path inside an enclosing workspace.
 
 ## Quick start
 
@@ -103,9 +104,21 @@ moon check --target wasm --deny-warn --output-json
 moonx benchmarks/run-campaign.mbtx
 ```
 
-The campaign downloads the official corpus, checks and builds native release
-executables, runs every official case and measures 11 scenarios in five fresh
-processes each. It saves the corpus, provenance, detailed outcomes and logs in
+The campaign downloads the official corpus, runs every official case, and measures
+11 scenarios in **two execution environments**, each with five fresh processes
+(110 measurements total):
+
+- `moonx`: validator and timing loop execute inside its linear-memory Wasm sandbox,
+  providing a portable-runtime performance baseline.
+- `moon run --target native --release`: validator and timing loop execute in the
+  device's compiled native binary, providing its native performance baseline.
+
+The two environments use the same workloads and counters, but publish separate
+median/min/max tables. A Wasm orchestrator launching native children is not itself
+a Wasm validator benchmark. See the [runner guide](benchmarks/README.md) for the
+same-source entry generation and build-layout differences.
+
+It saves the corpus, provenance, detailed outcomes and logs in
 `benchmark-results/`. Move or remove the previous campaign's `logs/` and `runs/`
 before starting another; existing evidence is not overwritten silently.
 

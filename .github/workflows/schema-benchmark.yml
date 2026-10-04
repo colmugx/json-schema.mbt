@@ -37,6 +37,9 @@ jobs:
 
       - name: Install toolchain bundle and pinned core
         uses: hustcer/setup-moonbit@v1.22
+        with:
+          version: ${{ inputs.moon || 'latest' }}
+          core-version: ${{ inputs.toolchain || '0.10.14+7d59c7ec9' }}
 
       - name: Bootstrap genuine moonx dispatcher and verify compiler
         timeout-minutes: 3
@@ -51,7 +54,7 @@ jobs:
 
       - name: Resolve library dependencies
         run: moon update
-      - name: Save official corpus, check, build native release and measure
+      - name: Save official corpus and measure native release plus moonx Wasm
         id: campaign
         timeout-minutes: 35
         run: moonx benchmarks/run-campaign.mbtx ${{ inputs.smoke && 'smoke' || '' }}
@@ -63,6 +66,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: schema-benchmark-${{ github.sha }}-${{ github.run_attempt }}
-          path: benchmark-results/
+          path: |
+            benchmark-results/
+            !benchmark-results/_build/
           if-no-files-found: warn
           retention-days: 30

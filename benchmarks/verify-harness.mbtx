@@ -20,18 +20,20 @@ async fn main {
   guard !@fs.path_exists(directory) else { fail("stale harness probe directory") }
   @fs.create_dir(directory)
   defer remove_probe(directory)
-  let executable = "./_build/native/release/build/cmd/conformance/conformance.exe"
-  let missing = @shell.Cmd(executable, ["--manifest", directory + "/missing.json"]).status(timeout_ms=30000)
+  let conformance = ["run", "cmd/conformance", "--target", "native", "--release", "--output-json", "--"]
+  let missing = @shell.Cmd("moon", conformance + ["--manifest", directory + "/missing.json"]).status(timeout_ms=30000)
   guard missing == 2 else { fail("missing input was not a harness failure") }
-  let filtered = @shell.Cmd(executable, ["--file", "no-such-fixture.json", "--output", directory + "/filtered.json"]).status(timeout_ms=30000)
+  let filtered = @shell.Cmd("moon", conformance + ["--file", "no-such-fixture.json", "--output", directory + "/filtered.json"]).status(timeout_ms=30000)
   guard filtered == 2 && !@fs.path_exists(directory + "/filtered.json") else { fail("empty selection was not a harness failure") }
   guard @json.parse(@fs.read_file_to_string("benchmark-results/manifest.json")) is Object(manifest) && manifest.get("totals") is Some(Object(totals)) else { fail("manifest missing") }
   totals["standard"] = Json::number(1302)
   @fs.write_string_to_file(directory + "/wrong-count.json", Json::object(manifest).stringify())
-  let corrupted = @shell.Cmd(executable, ["--manifest", directory + "/wrong-count.json", "--output", directory + "/corrupted.json"]).status(timeout_ms=30000)
+  let corrupted = @shell.Cmd("moon", conformance + ["--manifest", directory + "/wrong-count.json", "--output", directory + "/corrupted.json"]).status(timeout_ms=30000)
   guard corrupted == 2 && !@fs.path_exists(directory + "/corrupted.json") else { fail("corrupt denominator was not a harness failure") }
-  let benchmark = @shell.Cmd("./_build/native/release/build/cmd/benchmark/benchmark.exe", ["--scenario", "no-such-scenario", "--smoke", "--output", directory + "/measurement.json"]).status(timeout_ms=30000)
+  let benchmark = @shell.Cmd("moon", ["run", "cmd/benchmark", "--target", "native", "--release", "--output-json", "--", "--scenario", "no-such-scenario", "--smoke", "--output", directory + "/measurement.json"]).status(timeout_ms=30000)
   guard benchmark == 2 && !@fs.path_exists(directory + "/measurement.json") else { fail("invalid benchmark was not a harness failure") }
+  let wasm = @shell.Cmd("moonx", ["benchmark-results/measurement.mbtx", "--scenario", "no-such-scenario", "--smoke", "--output", directory + "/wasm.json"]).status(timeout_ms=60000)
+  guard wasm == 2 && !@fs.path_exists(directory + "/wasm.json") else { fail("invalid moonx benchmark was not a harness failure") }
   let timed_out = try {
     ignore(@async.with_timeout(20, () => @process.run("sleep", ["10"], cancel_handler=@process.hard_cancel())))
     false

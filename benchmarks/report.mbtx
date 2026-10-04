@@ -2,6 +2,7 @@ import {
   "moonbitlang/core/env",
   "moonbitlang/core/json",
   "moonbitlang/x@0.5.5/fs",
+  "moonbitlang/x@0.5.5/sys",
 }
 
 fn read_object(path : String) -> Map[String, Json] raise {
@@ -31,22 +32,26 @@ fn[V] sorted_keys(fields : Map[String, V]) -> Array[String] {
   keys
 }
 
-fn main raise {
+fn render_report(args : Array[String]) -> Unit raise {
   let report = StringBuilder()
-  report <+ "# JSON Schema: conformance and native release performance\n\n"
-  let state = read_object("benchmark-results/campaign.json")
+  report <+ "# JSON Schema: conformance and dual-runtime performance\n\n"
+  guard args.length() == 1 || (args.length() == 3 && args[1] == "--root") else {
+    fail("usage: moonx benchmarks/report.mbtx [--root PATH]")
+  }
+  let root = if args.length() == 3 { args[2] } else { "benchmark-results" }
+  let state = read_object(root + "/campaign.json")
   let state_status = text(state, "status")
   guard state_status == "complete" || state_status == "incomplete" else { fail("unknown campaign status") }
   let complete = state_status == "complete"
-  guard count(state, "version") == 1 && text(state, "target") == "native" && text(state, "build_mode") == "release" else { fail("invalid campaign configuration") }
+  guard count(state, "version") == 2 && state.get("runtimes") == Some((["native", "moonx-wasm"] : Json)) else { fail("invalid campaign configuration") }
   let repetitions = count(state, "repetitions")
   guard (state.get("smoke") == Some(Json::boolean(true)) && repetitions == 1) || (state.get("smoke") == Some(Json::boolean(false)) && repetitions == 5) else { fail("invalid repetitions/smoke configuration") }
-  let manifest = if @fs.path_exists("benchmark-results/manifest.json") { Some(read_object("benchmark-results/manifest.json")) } else { None }
+  let manifest = if @fs.path_exists(root + "/manifest.json") { Some(read_object(root + "/manifest.json")) } else { None }
   let mut corpus_revision = ""
   report <+ "Execution status: **\{if complete { "COMPLETE" } else { "FAILED / INCOMPLETE" }}**.\n\n"
   report <+ "\{text(state, "message")}\n\n"
-  if @fs.path_exists("benchmark-results/conformance.json") {
-    let conformance = read_object("benchmark-results/conformance.json")
+  if @fs.path_exists(root + "/conformance.json") {
+    let conformance = read_object(root + "/conformance.json")
     guard count(conformance, "version") == 1 && conformance.get("filtered") == Some(Json::boolean(false)) else { fail("filtered or unknown-version result cannot stand in for complete corpus") }
     guard manifest is Some(manifest) && manifest.get("totals") is Some(Object(totals)) else { fail("conformance manifest missing") }
     corpus_revision = text(conformance, "revision")
@@ -70,6 +75,7 @@ fn main raise {
       guard passed + mismatch + unsupported + rejected == total && total == count(totals, category) else { fail("unaccounted or wrong denominator: " + category) }
       report <+ "| \{category} | \{passed}/\{total} | \{mismatch} | \{unsupported} | \{rejected} |\n"
     }
+    report <+ "\nThe full corpus above was executed by the native release conformance runner. The moonx performance runner independently preflights the selected correctness-verified workload; this is not a separate full-corpus Wasm conformance claim.\n"
     report <+ "\nOptional format assertions are not enabled by this implementation. Optional results use the current annotation-only configuration and do not enlarge the standard conformance numerator. Same-document static JSON Pointer references are supported. Remote documents are saved, but remote resolution, resource identifiers and dynamic scope remain unsupported.\n\n"
     guard conformance.get("groups") is Some(Array(groups)) else { fail("group evidence missing") }
     let file_totals : Map[String, (Int, Int)] = Map([])
@@ -89,48 +95,77 @@ fn main raise {
     guard !complete else { fail("completed campaign missing conformance evidence") }
     report <+ "Conformance not completed; no x/N claim.\n\n"
   }
-  report <+ "## Native release measurements\n\n"
-  report <+ "Serial fresh processes. Parsed instances/schema parsing and process startup are outside workload clocks. Boolean, compilation and diagnostics are separate workloads. Each performance corpus contains only correctness-verified cases; IDs and exclusions are saved with each run. Do not compare changing eligible sets as a stable speed index. Hosted-runner results are noisy and not an absolute speed gate.\n\n"
-  let samples : Map[String, Array[Double]] = Map([])
+  report <+ "## Measurement contract\n\nSerial fresh processes; scenario and runtime order rotate. Startup, parsing/loading and reporting are outside clocks; per-batch clock sampling and counter bookkeeping are inside. Both runtimes preflight the same eligible instances and counters. Their measurements are never pooled. Portable Wasm is not a device-independent speed value; native release is this device's configured baseline, not a proof of optimal compiler flags. Hosted-runner noise is not an absolute speed gate.\n\n"
+  report <+ "moonx executes a standalone bundle generated from this checkout, with only namespace/private-name adjustments. Native uses separate library and runner packages. This source-layout difference and sandbox/host-call costs are part of the recorded configurations, not isolated Wasmtime-overhead measurements.\n\n"
+  let scenarios = ["official_compile", "official_validate", "official_compile_validate", "official_diagnostics", "tool_arguments", "structured_result", "array1024", "unique128", "branches", "exact_decimal", "pattern"]
   let identities : Map[String, Json] = Map([])
-  if @fs.path_exists("benchmark-results/runs") {
-    let paths = @fs.read_dir("benchmark-results/runs").to_owned()
-    paths.sort()
-    for path in paths {
-      if !path.has_suffix(".json") { continue }
-      let measurement = read_object("benchmark-results/runs/" + path)
-      let scenario = text(measurement, "scenario")
-      guard ["official_compile", "official_validate", "official_compile_validate", "official_diagnostics", "tool_arguments", "structured_result", "array1024", "unique128", "branches", "exact_decimal", "pattern"].contains(scenario) else { fail("unknown measured scenario") }
-      guard count(measurement, "version") == 1 && text(measurement, "revision") == corpus_revision && text(measurement, "target") == "native" && text(measurement, "build_mode") == "release" && measurement.get("smoke") == state.get("smoke") else { fail("measurement provenance mismatch") }
-      let operations = number(measurement, "operations")
-      let accepted = number(measurement, "accepted")
-      let iterations = count(measurement, "iterations")
-      let per_batch = count(measurement, "operations_per_batch")
-      let accepted_per_batch = count(measurement, "accepted_per_batch")
-      guard iterations > 0 && per_batch > 0 && accepted_per_batch <= per_batch && operations == iterations.to_double() * per_batch.to_double() && accepted == iterations.to_double() * accepted_per_batch.to_double() else { fail("measurement counter mismatch") }
-      let elapsed = number(measurement, "elapsed_us")
-      let value = number(measurement, "ns_per_operation")
-      guard elapsed > 0 && value > 0 && (value - elapsed * 1000 / operations).abs() <= value * 0.000000001 else { fail("measurement cost mismatch") }
-      guard measurement.get("eligible_case_ids") is Some(Array(ids)) && !ids.is_empty() else { fail("performance case identity missing") }
-      let ids = Json::array(ids)
-      if identities.get(scenario) is Some(previous) { guard previous == ids else { fail("performance case set changed across repetitions") } }
-      else { identities[scenario] = ids }
-      match samples.get(scenario) {
-        Some(values) => values.push(value)
-        None => samples[scenario] = [value]
-      }
+  if @fs.path_exists(root + "/runs") {
+    guard @fs.read_dir(root + "/runs").all(name => ["native", "moonx-wasm"].contains(name)) else {
+      fail("unknown measurement runtime directory")
     }
   }
-  report <+ "| Scenario | Runs | Median ns/op | Min | Max |\n|---|---:|---:|---:|---:|\n"
-  for scenario in sorted_keys(samples) {
-    let values = samples[scenario]
-    values.sort()
-    if complete { guard values.length() == repetitions else { fail("incomplete measurements: " + scenario) } }
-    report <+ "| \{scenario} | \{values.length()}/\{repetitions} | \{values[values.length() / 2]} | \{values[0]} | \{values[values.length() - 1]} |\n"
+  for runtime in ["native", "moonx-wasm"] {
+    let (target, build_mode) = if runtime == "native" { ("native", "release") } else { ("wasm", "moonx-default") }
+    report <+ "## \{if runtime == "native" { "Native release — device baseline" } else { "moonx Wasm sandbox — portable-runtime baseline" }}\n\n"
+    let samples : Map[String, Array[Double]] = Map([])
+    let directory = root + "/runs/" + runtime
+    let allowed : Set[String] = Set([])
+    for scenario in scenarios {
+      for repetition in 1..=repetitions { allowed.add(scenario + "-" + repetition.to_string() + ".json") }
+    }
+    if @fs.path_exists(directory) {
+      for path in @fs.read_dir(directory) {
+        guard allowed.contains(path) else { fail("unexpected measurement file: " + runtime + "/" + path) }
+        let measurement = read_object(directory + "/" + path)
+        let scenario = text(measurement, "scenario")
+        guard scenarios.contains(scenario) && [for index in 1..=repetitions => scenario + "-" + index.to_string() + ".json"].contains(path) else { fail("measurement filename/scenario mismatch") }
+        guard count(measurement, "version") == 2 && text(measurement, "revision") == corpus_revision && text(measurement, "runtime") == runtime && text(measurement, "target") == target && text(measurement, "build_mode") == build_mode && measurement.get("smoke") == state.get("smoke") else { fail("measurement provenance mismatch") }
+        let operations = number(measurement, "operations")
+        let accepted = number(measurement, "accepted")
+        let iterations = count(measurement, "iterations")
+        let per_batch = count(measurement, "operations_per_batch")
+        let accepted_per_batch = count(measurement, "accepted_per_batch")
+        guard iterations > 0 && per_batch > 0 && accepted_per_batch <= per_batch && operations == iterations.to_double() * per_batch.to_double() && accepted == iterations.to_double() * accepted_per_batch.to_double() else { fail("measurement counter mismatch") }
+        let elapsed = number(measurement, "elapsed_us")
+        let value = number(measurement, "ns_per_operation")
+        let throughput = number(measurement, "operations_per_second")
+        guard elapsed >= (if repetitions == 1 { 20000.0 } else { 200000.0 }) && value > 0 && throughput > 0 && (value - elapsed * 1000 / operations).abs() <= value * 0.000000001 && (throughput - operations * 1000000 / elapsed).abs() <= throughput * 0.000000001 else { fail("measurement cost mismatch") }
+        guard count(measurement, "warmup_batches") == (if repetitions == 1 { 1 } else { 5 }) else { fail("warmup mismatch") }
+        let mode = match scenario { "official_compile" => "compile"; "official_compile_validate" => "compile_validate"; "official_diagnostics" => "diagnostics"; _ => "validate" }
+        let unit = if mode == "compile" { "schema" } else { "instance" }
+        guard text(measurement, "mode") == mode && text(measurement, "operation_unit") == unit else { fail("measurement mode/unit mismatch") }
+        guard measurement.get("eligible_case_ids") is Some(Array(ids)) && !ids.is_empty() else { fail("performance case identity missing") }
+        let unique : Set[String] = Set([])
+        for id in ids { guard id is String(id) && !unique.contains(id) else { fail("invalid/duplicate performance case") }; unique.add(id) }
+        let schemas = count(measurement, "eligible_schemas")
+        guard schemas > 0 && per_batch == (if mode == "compile" { schemas } else { ids.length() }) else { fail("workload count mismatch") }
+        let identity : Json = { "ids": Json::array(ids), "schemas": schemas, "excluded": count(measurement, "excluded_cases"), "per_batch": per_batch, "accepted_per_batch": accepted_per_batch, "mode": mode, "unit": unit, "timing_contract": text(measurement, "timing_contract") }
+        if identities.get(scenario) is Some(previous) { guard previous == identity else { fail("workload changed across repetitions or runtimes") } }
+        else { identities[scenario] = identity }
+        match samples.get(scenario) { Some(values) => values.push(value); None => samples[scenario] = [value] }
+      }
+    }
+    report <+ "| Scenario | Runs | Median ns/op | Min | Max |\n|---|---:|---:|---:|---:|\n"
+    for scenario in sorted_keys(samples) {
+      let values = samples[scenario]
+      values.sort()
+      if complete { guard values.length() == repetitions else { fail("incomplete measurements: " + runtime + "/" + scenario) } }
+      report <+ "| \{scenario} | \{values.length()}/\{repetitions} | \{values[values.length() / 2]} | \{values[0]} | \{values[values.length() - 1]} |\n"
+    }
+    if complete { guard samples.length() == scenarios.length() else { fail("completed campaign missing runtime/scenario: " + runtime) } }
+    else if samples.is_empty() { report <+ "No measurements completed for this runtime.\n" }
+    report <+ "\n"
   }
-  if complete { guard samples.length() == 11 else { fail("completed campaign missing a performance scenario") } }
   report <+ "\nCompilation rows use schemas as operations; validation/diagnostic rows use instances. Macro scenarios identify their units in raw JSON. These are aggregate per-run costs, not individual request latency percentiles. Raw corpus, manifest, environment/build logs, per-process stdout/stderr/status and detailed JSON are retained in the artifact.\n"
-  @fs.write_string_to_file("benchmark-results/report.md", report.to_string())
-  if @env.get_env_var("GITHUB_STEP_SUMMARY") is Some(path) { @fs.write_string_to_file(path, report.to_string()) }
-  println("report: benchmark-results/report.md")
+  @fs.write_string_to_file(root + "/report.md", report.to_string())
+  if args.length() == 1 && @env.get_env_var("GITHUB_STEP_SUMMARY") is Some(path) { @fs.write_string_to_file(path, report.to_string()) }
+  println("report: " + root + "/report.md")
+}
+
+fn main {
+  let code = try {
+    render_report(@env.args())
+    0
+  } catch { error => { println("REPORT ERROR: \{error}"); 2 } }
+  @sys.exit(code)
 }

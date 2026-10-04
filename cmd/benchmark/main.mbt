@@ -150,12 +150,14 @@ fn execute(options : Options) -> Unit raise {
     fail("measurement correctness counter failed")
   }
   let manifest = object(@json.parse(@fs.read_file_to_string(options.manifest)))
+  let (runtime, target, build_mode) = execution_identity()
   let result : Json = {
-    "version": 1,
+    "version": 2,
+    "runtime": runtime,
     "scenario": options.scenario,
     "revision": text(manifest, "revision"),
-    "target": "native",
-    "build_mode": "release",
+    "target": target,
+    "build_mode": build_mode,
     "smoke": options.smoke,
     "mode": mode,
     "operation_unit": if mode == "compile" {

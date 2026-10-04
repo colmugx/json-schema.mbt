@@ -6,3 +6,4 @@ target
 .moonagent/
 benchmark-results/
 .ci-bin/
+docs

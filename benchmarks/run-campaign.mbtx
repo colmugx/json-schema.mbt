@@ -37,7 +37,7 @@ async fn checked(name : String, program : String, args : Array[String], limit? :
 }
 
 fn save_state(status : String, smoke : Bool, repetitions : Int, message : String) -> Unit raise {
-  @fs.write_string_to_file("benchmark-results/campaign.json", ({ "version": 1, "status": status, "smoke": smoke, "repetitions": repetitions, "message": message, "target": "native", "build_mode": "release" } : Json).stringify(indent=2))
+  @fs.write_string_to_file("benchmark-results/campaign.json", ({ "version": 2, "status": status, "smoke": smoke, "repetitions": repetitions, "message": message, "runtimes": ["native", "moonx-wasm"] } : Json).stringify(indent=2))
 }
 
 async fn main {
@@ -49,6 +49,8 @@ async fn main {
   guard !@fs.path_exists("benchmark-results/runs") && !@fs.path_exists("benchmark-results/logs") else { fail("campaign artifacts already exist; move or remove the old campaign before running again") }
   @fs.create_dir("benchmark-results/logs")
   @fs.create_dir("benchmark-results/runs")
+  @fs.create_dir("benchmark-results/runs/native")
+  @fs.create_dir("benchmark-results/runs/moonx-wasm")
   save_state("incomplete", smoke, repetitions, "campaign has not finished")
   let outcome : Result[Unit, Error] = try { Ok({
     checked("toolchain", "moon", ["version", "--all"])
@@ -62,8 +64,11 @@ async fn main {
     checked("unit-tests", "moon", ["test", "--target", "native", "--deny-warn", "--output-json"])
     checked("build-conformance", "moon", ["build", "cmd/conformance", "--target", "native", "--release", "--deny-warn", "--output-json"])
     checked("build-benchmark", "moon", ["build", "cmd/benchmark", "--target", "native", "--release", "--deny-warn", "--output-json"])
+    checked("check-wasm", "moon", ["check", "--target", "wasm", "--deny-warn", "--output-json"])
+    checked("prepare-moonx", "moonx", ["benchmarks/prepare-moonx.mbtx"])
     checked("harness-probes", "moonx", ["benchmarks/verify-harness.mbtx"])
-    let code = invoke("conformance", "./_build/native/release/build/cmd/conformance/conformance.exe", ["--manifest", "benchmark-results/manifest.json", "--output", "benchmark-results/conformance.json"], 300000)
+    if @fs.path_exists("benchmark-results/conformance.json") { @fs.remove_file("benchmark-results/conformance.json") }
+    let code = invoke("conformance", "moon", ["run", "cmd/conformance", "--target", "native", "--release", "--deny-warn", "--output-json", "--", "--manifest", "benchmark-results/manifest.json", "--output", "benchmark-results/conformance.json"], 300000)
     guard code == 0 || code == 1 else { fail("conformance harness failed: exit \{code}") }
     guard @fs.path_exists("benchmark-results/conformance.json") else { fail("conformance report missing") }
     let scenarios = ["official_compile", "official_validate", "official_compile_validate", "official_diagnostics", "tool_arguments", "structured_result", "array1024", "unique128", "branches", "exact_decimal", "pattern"]
@@ -71,15 +76,25 @@ async fn main {
       for offset in 0..<scenarios.length() {
         let scenario = scenarios[(offset + repetition) % scenarios.length()]
         let name = scenario + "-" + (repetition + 1).to_string()
-        let argv = ["--manifest", "benchmark-results/manifest.json", "--conformance", "benchmark-results/conformance.json", "--output", "benchmark-results/runs/" + name + ".json", "--scenario", scenario]
-        if smoke { argv.push("--smoke") }
-        println("native release: \{name}")
-        checked(name, "./_build/native/release/build/cmd/benchmark/benchmark.exe", argv, limit=120000)
-        guard @fs.path_exists("benchmark-results/runs/" + name + ".json") else { fail("measurement report missing: " + name) }
+        let runtimes = if (offset + repetition) % 2 == 0 {
+          ["native", "moonx-wasm"]
+        } else { ["moonx-wasm", "native"] }
+        for runtime in runtimes {
+          let output = "benchmark-results/runs/" + runtime + "/" + name + ".json"
+          let argv = ["--manifest", "benchmark-results/manifest.json", "--conformance", "benchmark-results/conformance.json", "--output", output, "--scenario", scenario]
+          if smoke { argv.push("--smoke") }
+          let (program, prefix) = if runtime == "native" {
+            ("moon", ["run", "cmd/benchmark", "--target", "native", "--release", "--deny-warn", "--output-json", "--"])
+          } else { ("moonx", ["benchmark-results/measurement.mbtx"]) }
+          println("\{runtime}: \{name}")
+          checked(runtime + "-" + name, program, prefix + argv, limit=120000)
+          guard @fs.path_exists(output) else { fail("measurement report missing: " + runtime + "/" + name) }
+        }
       }
     }
-    save_state("complete", smoke, repetitions, "native campaign completed; conformance gaps remain visible in x/N")
+    save_state("complete", smoke, repetitions, "both native and moonx-Wasm measurements completed; conformance gaps remain visible in x/N")
     checked("summary", "moonx", ["benchmarks/report.mbtx"])
+    checked("report-probes", "moonx", ["benchmarks/verify-report.mbtx"])
   }) } catch { error => Err(error) }
   match outcome {
     Ok(_) => ()

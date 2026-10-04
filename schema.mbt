@@ -33,6 +33,7 @@ priv enum Rule {
   One(Array[Plan], String)
   Negate(Plan, String)
   Conditional(Plan, Plan?, Plan?)
+  Ref(Int)
 }
 
 ///|
@@ -63,10 +64,18 @@ priv struct ArrayPlan {
 }
 
 ///|
+/// An owned indexed node graph: `$ref` rules jump to arena slots instead of
+/// inlining targets, so recursive schemas compile once and validation never
+/// builds cyclic heap references or expands plans exponentially.
+priv struct Program {
+  nodes : Array[Plan]
+}
+
+///|
 /// An owned, precompiled 2020-12 validation plan. Compilation does not mutate
 /// the source document; constants and enumerations are copied into the plan.
 pub struct Schema {
-  priv plan : Plan
+  priv plan : Program
 }
 
 ///|

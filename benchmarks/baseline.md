@@ -3,7 +3,30 @@
 This is the first full-corpus/native-campaign baseline, not a cross-library
 comparison or a claim to be the fastest validator.
 
-## Environment and corpus
+## Follow-up milestone: local static references
+
+A subsequent full campaign added local `$ref`/`$defs` support and preserved the
+same pinned corpus and compiler version. All 55 native release measurements
+completed; no check/build/harness failures occurred. Current standard coverage
+is **962/1301** (0 mismatches, 337 unsupported, 2 rejected); optional coverage
+is **535/1036**, reported separately. Timing eligibility is now **962 instances /
+244 schemas**, with 588 expected-valid and 374 expected-invalid instances.
+
+| Scenario | Unit | Median ns/op | Min | Max |
+|---|---|---:|---:|---:|
+| Official compile | schema | 3008.76 | 2985.57 | 3056.17 |
+| Official boolean validation | instance | 383.11 | 377.89 | 394.27 |
+| Official compile + validation | instance | 1156.36 | 1152.76 | 1197.15 |
+| Official diagnostics | instance | 426.58 | 424.22 | 438.29 |
+| Tool arguments | instance | 1389.96 | 1374.67 | 1422.14 |
+| Structured result | instance | 1393.77 | 1347.67 | 1447.85 |
+
+These are a new correctness-verified workload, **not a same-corpus speed
+comparison** with the first baseline below. The compile plan now indexes local
+reference targets; no claim about the fastest implementation follows from these
+numbers. Detailed JSON and counters remain in `benchmark-results/`.
+
+## First baseline: environment and corpus
 
 - Local Darwin arm64, kernel 27.0.0; exact CPU model not recorded.
 - Moon `0.1.20260920` (`914d7da`); moonc `v0.10.14+7d59c7ec9`.

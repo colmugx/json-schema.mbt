@@ -46,11 +46,10 @@ test "compiler: malformed keyword shapes and unavailable semantics are typed err
     }
   }
   try compiled("{\"$ref\":\"#/x\"}") catch {
-    @json-schema.CompileError::UnsupportedKeyword(keyword~, ..) =>
-      assert_eq(keyword, "$ref")
+    @json-schema.CompileError::InvalidKeyword(..) => ()
     error => raise error
   } noraise {
-    _ => fail("expected unsupported reference")
+    _ => fail("expected unresolvable reference")
   }
 }
 

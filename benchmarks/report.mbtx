@@ -70,7 +70,7 @@ fn main raise {
       guard passed + mismatch + unsupported + rejected == total && total == count(totals, category) else { fail("unaccounted or wrong denominator: " + category) }
       report <+ "| \{category} | \{passed}/\{total} | \{mismatch} | \{unsupported} | \{rejected} |\n"
     }
-    report <+ "\nOptional format assertions are not enabled by this implementation. Optional results use the current annotation-only configuration and do not enlarge the standard conformance numerator. Remote documents are saved, but reference resolution remains unimplemented.\n\n"
+    report <+ "\nOptional format assertions are not enabled by this implementation. Optional results use the current annotation-only configuration and do not enlarge the standard conformance numerator. Same-document static JSON Pointer references are supported. Remote documents are saved, but remote resolution, resource identifiers and dynamic scope remain unsupported.\n\n"
     guard conformance.get("groups") is Some(Array(groups)) else { fail("group evidence missing") }
     let file_totals : Map[String, (Int, Int)] = Map([])
     for group in groups {

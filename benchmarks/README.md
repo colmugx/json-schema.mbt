@@ -48,7 +48,8 @@ revision. Fetch/build/check/test errors are fatal.
 `.mbtx` scripts always use **`moonx`**. Only orchestration scripts import
 `moonbitlang/async@0.21.3`; it is not a library runtime dependency. Native package
 runners use `moon run` or their built executables, avoiding registry imports of
-an unpublished local validator.
+an unpublished local validator. CI bootstraps the `moonx` dispatcher itself
+before any script runs; see the workflow section below.
 
 ## Official-suite TDD
 
@@ -103,7 +104,7 @@ unit-test blocks.
 
 Official performance workloads include **only cases proven correct** by the
 full conformance report, then independently preflight boolean and diagnostic
-results. At this baseline that is 921 instances across 230 schemas; 380 standard
+results. At the local-reference milestone that is 962 instances across 244 schemas; 339 standard
 cases are excluded from timing but **not** from conformance. Every measurement
 records eligible IDs and exclusions. Never compare changing eligible sets as a
 stable speed index. Synthetic workloads also preflight their expected outcomes.
@@ -131,7 +132,7 @@ is not an absolute throughput gate or evidence of being the fastest library.
 ## Independent GitHub Actions workflow
 
 `.github/workflows/schema-benchmark.yml` runs on `main` pushes and manual dispatch
-once this directory is a repository root. It pins compiler/core, defaults to
+from this independent repository root. It pins core and verifies the compiler version, defaults to
 native release/full repetitions, writes the Actions step summary and uploads
 corpus/license/manifest/results/raw logs even when the campaign fails. Ordinary
 coverage gaps are visible without making the workflow red; unrelated failures

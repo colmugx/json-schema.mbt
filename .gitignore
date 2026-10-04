@@ -5,3 +5,4 @@ target
 .mooncakes/
 .moonagent/
 benchmark-results/
+.ci-bin/

@@ -5,8 +5,13 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      moon:
+        description: Moon toolchain bundle channel; exact installed versions are recorded in campaign evidence
+        required: true
+        default: 'latest'
+        type: string
       toolchain:
-        description: MoonBit/compiler/core version (keep identical across comparisons)
+        description: Required compiler version and pinned core version (mismatch fails startup)
         required: true
         default: '0.10.14+7d59c7ec9'
         type: string
@@ -29,16 +34,30 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - uses: hustcer/setup-moonbit@v1.22
+
+      - name: Install toolchain bundle and pinned core
+        uses: hustcer/setup-moonbit@v1.22
+
+      - name: Bootstrap genuine moonx dispatcher and verify compiler
+        timeout-minutes: 3
+        env:
+          EXPECTED_COMPILER: ${{ inputs.toolchain || '0.10.14+7d59c7ec9' }}
+        run: |
+          mkdir -p .ci-bin
+          install -m 755 "$(command -v moon)" .ci-bin/moonx
+          .ci-bin/moonx --help | grep -F 'Run a standalone .mbtx file'
+          moonc -v | grep -F "v${EXPECTED_COMPILER} ("
+          echo "$PWD/.ci-bin" >> "$GITHUB_PATH"
+
       - name: Resolve library dependencies
         run: moon update
       - name: Save official corpus, check, build native release and measure
         id: campaign
         timeout-minutes: 35
-        run: moon run benchmarks/run-campaign.mbtx --target native -- ${{ inputs.smoke && 'smoke' || '' }}
+        run: moonx benchmarks/run-campaign.mbtx ${{ inputs.smoke && 'smoke' || '' }}
       - name: Publish summary, including incomplete execution
         if: always() && (steps.campaign.outcome == 'success' || steps.campaign.outcome == 'failure')
-        run: moon run benchmarks/report.mbtx --target native
+        run: moonx benchmarks/report.mbtx
       - name: Preserve corpus, results and raw evidence even on failure
         if: always()
         uses: actions/upload-artifact@v4

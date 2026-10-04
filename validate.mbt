@@ -7,7 +7,7 @@ pub fn Schema::valid(
   max_depth? : Int = 128,
 ) -> Bool raise {
   check_instance(value, "", 0, max_depth)
-  evaluate(self.plan, value, "", None, 0, max_depth)
+  evaluate(self.plan, self.plan.nodes[0], value, "", None, 0, max_depth)
 }
 
 ///|
@@ -20,7 +20,17 @@ pub fn Schema::faults(
 ) -> Array[Fault] raise {
   check_instance(value, "", 0, max_depth)
   let failures : Array[Fault] = []
-  ignore(evaluate(self.plan, value, "", Some(failures), 0, max_depth))
+  ignore(
+    evaluate(
+      self.plan,
+      self.plan.nodes[0],
+      value,
+      "",
+      Some(failures),
+      0,
+      max_depth,
+    ),
+  )
   failures
 }
 
@@ -135,6 +145,7 @@ fn matches_type(kind : ValueType, value : Json, path : String) -> Bool raise {
 
 ///|
 fn evaluate(
+  program : Program,
   plan : Plan,
   value : Json,
   path : String,
@@ -154,7 +165,7 @@ fn evaluate(
     Rules(rules) => {
       let mut valid = true
       for rule in rules {
-        if !evaluate_rule(rule, value, path, failures, depth, limit) {
+        if !evaluate_rule(program, rule, value, path, failures, depth, limit) {
           valid = false
           if failures is None {
             return false
@@ -168,6 +179,7 @@ fn evaluate(
 
 ///|
 fn evaluate_rule(
+  program : Program,
   rule : Rule,
   value : Json,
   path : String,
@@ -270,13 +282,13 @@ fn evaluate_rule(
       )
     }
     Objects(object_plan) =>
-      evaluate_object(object_plan, value, path, failures, depth, limit)
+      evaluate_object(program, object_plan, value, path, failures, depth, limit)
     Arrays(array_plan) =>
-      evaluate_array(array_plan, value, path, failures, depth, limit)
+      evaluate_array(program, array_plan, value, path, failures, depth, limit)
     All(branches, location) => {
       let mut valid = true
       for branch in branches {
-        if !evaluate(branch, value, path, failures, depth + 1, limit) {
+        if !evaluate(program, branch, value, path, failures, depth + 1, limit) {
           valid = false
           if failures is None {
             return false
@@ -292,7 +304,7 @@ fn evaluate_rule(
     }
     Any(branches, location) => {
       for branch in branches {
-        if evaluate(branch, value, path, None, depth + 1, limit) {
+        if evaluate(program, branch, value, path, None, depth + 1, limit) {
           return true
         }
       }
@@ -301,7 +313,7 @@ fn evaluate_rule(
     One(branches, location) => {
       let mut matches = 0
       for branch in branches {
-        if evaluate(branch, value, path, None, depth + 1, limit) {
+        if evaluate(program, branch, value, path, None, depth + 1, limit) {
           matches += 1
           if matches > 1 {
             break
@@ -314,25 +326,46 @@ fn evaluate_rule(
       )
     }
     Negate(branch, location) =>
-      !evaluate(branch, value, path, None, depth + 1, limit) ||
+      !evaluate(program, branch, value, path, None, depth + 1, limit) ||
       fail(failures, path, location, "not", "negated schema matched")
     Conditional(predicate, consequent, alternate) => {
-      let arm = if evaluate(predicate, value, path, None, depth + 1, limit) {
+      let arm = if evaluate(
+          program,
+          predicate,
+          value,
+          path,
+          None,
+          depth + 1,
+          limit,
+        ) {
         consequent
       } else {
         alternate
       }
       match arm {
         Some(branch) =>
-          evaluate(branch, value, path, failures, depth + 1, limit)
+          evaluate(program, branch, value, path, failures, depth + 1, limit)
         None => true
       }
     }
+    Ref(target) =>
+      // Each jump consumes budget: cyclic references raise DepthLimit instead
+      // of looping, and the indexed slot is shared rather than re-expanded.
+      evaluate(
+        program,
+        program.nodes[target],
+        value,
+        path,
+        failures,
+        depth + 1,
+        limit,
+      )
   }
 }
 
 ///|
 fn evaluate_object(
+  program : Program,
   plan : ObjectPlan,
   value : Json,
   path : String,
@@ -386,7 +419,15 @@ fn evaluate_object(
     let mut covered = false
     if plan.properties.get(name) is Some(schema) {
       covered = true
-      if !evaluate(schema, child, child_path, failures, depth + 1, limit) {
+      if !evaluate(
+          program,
+          schema,
+          child,
+          child_path,
+          failures,
+          depth + 1,
+          limit,
+        ) {
         valid = false
         if failures is None {
           return false
@@ -397,7 +438,15 @@ fn evaluate_object(
       let (pattern, schema) = entry
       if pattern_matches(pattern, name) {
         covered = true
-        if !evaluate(schema, child, child_path, failures, depth + 1, limit) {
+        if !evaluate(
+            program,
+            schema,
+            child,
+            child_path,
+            failures,
+            depth + 1,
+            limit,
+          ) {
           valid = false
           if failures is None {
             return false
@@ -406,7 +455,15 @@ fn evaluate_object(
       }
     }
     if !covered && plan.additional is Some(schema) {
-      if !evaluate(schema, child, child_path, failures, depth + 1, limit) {
+      if !evaluate(
+          program,
+          schema,
+          child,
+          child_path,
+          failures,
+          depth + 1,
+          limit,
+        ) {
         valid = false
         if failures is None {
           return false
@@ -415,6 +472,7 @@ fn evaluate_object(
     }
     if plan.names is Some(schema) {
       if !evaluate(
+          program,
           schema,
           Json::string(name),
           child_path,
@@ -451,7 +509,7 @@ fn evaluate_object(
   for entry in plan.dependent_schemas {
     let (trigger, schema) = entry
     if fields.contains(trigger) &&
-      !evaluate(schema, value, path, failures, depth + 1, limit) {
+      !evaluate(program, schema, value, path, failures, depth + 1, limit) {
       valid = false
       if failures is None {
         return false
@@ -463,6 +521,7 @@ fn evaluate_object(
 
 ///|
 fn evaluate_array(
+  program : Program,
   plan : ArrayPlan,
   value : Json,
   path : String,
@@ -505,14 +564,14 @@ fn evaluate_array(
       plan.items
     }
     if schema is Some(node) &&
-      !evaluate(node, child, child_path, failures, depth + 1, limit) {
+      !evaluate(program, node, child, child_path, failures, depth + 1, limit) {
       valid = false
       if failures is None {
         return false
       }
     }
     if plan.contains is Some(node) &&
-      evaluate(node, child, child_path, None, depth + 1, limit) {
+      evaluate(program, node, child, child_path, None, depth + 1, limit) {
       matches += 1
     }
     if plan.unique {

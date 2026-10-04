@@ -7,6 +7,10 @@ import {
   "moonbitlang/x@0.5.5/fs",
 }
 
+fn command_label(name : String, program : String, args : Array[String]) -> String {
+  "\{name}: program \{program} args [\{args.join(" ")}]"
+}
+
 async fn invoke(name : String, program : String, args : Array[String], limit : Int) -> Int {
   let base = "benchmark-results/logs/" + name
   @fs.write_string_to_file(base + ".command.json", ({ "program": program, "args": args.to_json() } : Json).stringify())
@@ -22,14 +26,14 @@ async fn invoke(name : String, program : String, args : Array[String], limit : I
     }
     Err(error) => {
       @fs.write_string_to_file(base + ".status.json", ({ "error": "\{error}" } : Json).stringify())
-      raise error
+      fail("\{command_label(name, program, args)} failed to start; raw error: \{error}")
     }
   }
 }
 
 async fn checked(name : String, program : String, args : Array[String], limit? : Int = 300000) -> Unit {
   let code = invoke(name, program, args, limit)
-  guard code == 0 else { fail("\{name}: exit \{code}; see raw logs") }
+  guard code == 0 else { fail("\{command_label(name, program, args)}: exit \{code}; see benchmark-results/logs/\{name}.*") }
 }
 
 fn save_state(status : String, smoke : Bool, repetitions : Int, message : String) -> Unit raise {
@@ -82,8 +86,8 @@ async fn main {
     Err(error) => {
       save_state("incomplete", smoke, repetitions, "\{error}")
       // Best-effort summary cannot replace or swallow the original failure.
-      let summary = @shell.Cmd("moonx", ["benchmarks/report.mbtx"]).status(timeout_ms=60000) catch { secondary => { println("summary also failed: \{secondary}"); -1 } }
-      if summary != 0 { println("summary exit: \{summary}; original failure retained") }
+      let summary = @shell.Cmd("moonx", ["benchmarks/report.mbtx"]).status(timeout_ms=60000) catch { secondary => { println("fallback summary failed to start (program moonx args [benchmarks/report.mbtx]): \{secondary}"); -1 } }
+      if summary != 0 { println("fallback summary (program moonx args [benchmarks/report.mbtx]) exit \{summary}; original failure retained") }
       raise error
     }
   }

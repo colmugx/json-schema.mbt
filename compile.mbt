@@ -1,7 +1,8 @@
 ///|
 /// Compile a schema once. Unknown extension keywords are annotations; known
-/// malformed keywords fail compilation. References and unevaluated keywords
-/// are explicitly refused until their evaluation semantics are implemented.
+/// malformed keywords fail compilation. Local static `$ref` targets compile
+/// into an indexed arena; unevaluated and cross-resource semantics stay
+/// explicitly refused until their evaluation semantics are implemented.
 pub fn Schema::compile(
   document : Json,
   max_depth? : Int = 128,
@@ -10,7 +11,35 @@ pub fn Schema::compile(
     raise CompileError::DepthLimit(max_depth)
   }
   check_schema_json(document, "", 0, max_depth)
-  { plan: compile_node(document, "", 0, max_depth), }
+  let index = index_document(document, max_depth)
+  ignore(compile_into(index, document, "", 0, max_depth))
+  { plan: { nodes: index.nodes, }, }
+}
+
+///|
+// Compile one schema position and store its plan in the arena, so `$ref`
+// rules can jump to it. The structural walk visits every keyword-owned
+// position once; lazily referenced positions compile through the same entry
+// point. Raising the visited flag on entry marks the active compile chain,
+// which keeps recursive targets finite, and refs stay indexed instead of
+// inlined.
+fn compile_into(
+  index : RefIndex,
+  document : Json,
+  path : String,
+  depth : Int,
+  limit : Int,
+) -> Plan raise CompileError {
+  if index.slots.contains(path) {
+    index.visited[index.slots[path]] = true
+  }
+  let plan = compile_node(index, document, path, depth, limit)
+  if index.slots.contains(path) {
+    let slot = index.slots[path]
+    index.nodes[slot] = plan
+    index.visited[slot] = true
+  }
+  plan
 }
 
 ///|
@@ -158,6 +187,7 @@ fn compile_type(value : Json, path : String) -> ValueType raise CompileError {
 
 ///|
 fn optional_node(
+  index : RefIndex,
   fields : Map[String, Json],
   key : String,
   path : String,
@@ -166,11 +196,14 @@ fn optional_node(
 ) -> Plan? raise CompileError {
   fields
   .get(key)
-  .map(value => compile_node(value, pointer_step(path, key), depth + 1, limit))
+  .map(value => {
+    compile_into(index, value, pointer_step(path, key), depth + 1, limit)
+  })
 }
 
 ///|
 fn compile_branches(
+  index : RefIndex,
   value : Json,
   path : String,
   depth : Int,
@@ -180,10 +213,11 @@ fn compile_branches(
     invalid_keyword(path, "expected a nonempty array of schemas")
     return []
   }
-  branches.mapi((index, schema) => {
-    compile_node(
+  branches.mapi((position, schema) => {
+    compile_into(
+      index,
       schema,
-      pointer_step(path, index.to_string()),
+      pointer_step(path, position.to_string()),
       depth + 1,
       limit,
     )
@@ -209,6 +243,7 @@ fn compile_pattern_at(
 
 ///|
 fn compile_node(
+  index : RefIndex,
   document : Json,
   path : String,
   depth : Int,
@@ -240,8 +275,14 @@ fn compile_node(
           raise UnknownDialect(uri)
         }
       }
-      "$ref"
-      | "$dynamicRef"
+      "$ref" => {
+        guard value is String(reference) else {
+          invalid_keyword(location, "expected a reference URI string")
+          continue
+        }
+        rules.push(Ref(resolve_ref(index, reference, location, limit)))
+      }
+      "$dynamicRef"
       | "$id"
       | "$anchor"
       | "$dynamicAnchor"
@@ -256,7 +297,13 @@ fn compile_node(
         }
         for name, schema in definitions {
           ignore(
-            compile_node(schema, pointer_step(location, name), depth + 1, limit),
+            compile_into(
+              index,
+              schema,
+              pointer_step(location, name),
+              depth + 1,
+              limit,
+            ),
           )
         }
       }
@@ -275,8 +322,10 @@ fn compile_node(
       }
       "const" => rules.push(Constant(owned_json(value), location))
       "enum" => {
-        guard value is Array(values) && !values.is_empty() else {
-          invalid_keyword(location, "enum must be a nonempty array")
+        // 2020-12 only requires an array: entries SHOULD be unique and the
+        // array MAY be empty, in which case no instance ever matches.
+        guard value is Array(values) else {
+          invalid_keyword(location, "expected an array of enum values")
           continue
         }
         rules.push(Enumeration(values.map(owned_json), location))
@@ -315,19 +364,22 @@ fn compile_node(
         rules.push(Pattern(compile_pattern_at(value, location), location))
       "allOf" =>
         rules.push(
-          All(compile_branches(value, location, depth, limit), location),
+          All(compile_branches(index, value, location, depth, limit), location),
         )
       "anyOf" =>
         rules.push(
-          Any(compile_branches(value, location, depth, limit), location),
+          Any(compile_branches(index, value, location, depth, limit), location),
         )
       "oneOf" =>
         rules.push(
-          One(compile_branches(value, location, depth, limit), location),
+          One(compile_branches(index, value, location, depth, limit), location),
         )
       "not" =>
         rules.push(
-          Negate(compile_node(value, location, depth + 1, limit), location),
+          Negate(
+            compile_into(index, value, location, depth + 1, limit),
+            location,
+          ),
         )
       "title"
       | "description"
@@ -346,7 +398,8 @@ fn compile_node(
         if !(value is Array(_)) {
           invalid_keyword(location, "expected an array annotation")
         }
-      "contentSchema" => ignore(compile_node(value, location, depth + 1, limit))
+      "contentSchema" =>
+        ignore(compile_into(index, value, location, depth + 1, limit))
       _ => ()
     }
   }
@@ -357,9 +410,9 @@ fn compile_node(
   }
   // Compile conditional arms even when `if` is absent: their shapes must
   // still be legal, although their validation effects are then ignored.
-  let condition = optional_node(fields, "if", path, depth, limit)
-  let consequent = optional_node(fields, "then", path, depth, limit)
-  let alternate = optional_node(fields, "else", path, depth, limit)
+  let condition = optional_node(index, fields, "if", path, depth, limit)
+  let consequent = optional_node(index, fields, "then", path, depth, limit)
+  let alternate = optional_node(index, fields, "else", path, depth, limit)
   if condition is Some(predicate) {
     rules.push(Conditional(predicate, consequent, alternate))
   }
@@ -375,7 +428,8 @@ fn compile_node(
     for name, schema in schemas {
       properties.set(
         name,
-        compile_node(
+        compile_into(
+          index,
           schema,
           pointer_step(pointer_step(path, "properties"), name),
           depth + 1,
@@ -401,7 +455,7 @@ fn compile_node(
       patterns.push(
         (
           compile_pattern_at(Json::string(expression), location),
-          compile_node(schema, location, depth + 1, limit),
+          compile_into(index, schema, location, depth + 1, limit),
         ),
       )
     }
@@ -438,7 +492,8 @@ fn compile_node(
       dependent_schemas.push(
         (
           name,
-          compile_node(
+          compile_into(
+            index,
             schema,
             pointer_step(pointer_step(path, "dependentSchemas"), name),
             depth + 1,
@@ -456,9 +511,9 @@ fn compile_node(
     dependent_required,
     dependent_schemas,
     additional: optional_node(
-      fields, "additionalProperties", path, depth, limit,
+      index, fields, "additionalProperties", path, depth, limit,
     ),
-    names: optional_node(fields, "propertyNames", path, depth, limit),
+    names: optional_node(index, fields, "propertyNames", path, depth, limit),
     minimum: compile_count(fields, "minProperties", path),
     maximum: compile_count(fields, "maxProperties", path),
   }
@@ -471,7 +526,13 @@ fn compile_node(
   let prefix = match fields.get("prefixItems") {
     None => []
     Some(value) =>
-      compile_branches(value, pointer_step(path, "prefixItems"), depth, limit)
+      compile_branches(
+        index,
+        value,
+        pointer_step(path, "prefixItems"),
+        depth,
+        limit,
+      )
   }
   let unique = match fields.get("uniqueItems") {
     Some(True) => true
@@ -485,8 +546,8 @@ fn compile_node(
     path,
     prefix,
     unique,
-    items: optional_node(fields, "items", path, depth, limit),
-    contains: optional_node(fields, "contains", path, depth, limit),
+    items: optional_node(index, fields, "items", path, depth, limit),
+    contains: optional_node(index, fields, "contains", path, depth, limit),
     min_contains: compile_count(fields, "minContains", path).unwrap_or(1),
     max_contains: compile_count(fields, "maxContains", path),
     minimum: compile_count(fields, "minItems", path),

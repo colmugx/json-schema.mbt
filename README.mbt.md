@@ -4,8 +4,9 @@ A compile-once JSON Schema validator for MoonBit, built around **precise
 2020-12 validation scenarios** rather than permissive approximations.
 
 **Status: development milestone, not a complete 2020-12 implementation.**
-References, dynamic scope and unevaluated annotations are not implemented yet.
-Schemas requesting those semantics fail compilation explicitly. See
+Local static JSON Pointer references are supported, including recursive plans.
+Remote references, resource identifiers, dynamic scope and unevaluated semantics
+are not implemented; schemas requesting those semantics fail compilation explicitly. See
 [the support contract](docs/conformance.md) before adopting the library.
 
 ## Use it for
@@ -75,7 +76,8 @@ representations are checked, not silently discarded.
 The compiler/evaluator covers boolean schemas, `type`, `const`, `enum`, numeric
 bounds and `multipleOf`, string lengths and patterns, object properties/names/
 dependencies, 2020-12 `prefixItems`/`items`, array counts/`contains`/`uniqueItems`,
-and `allOf`/`anyOf`/`oneOf`/`not`/`if`/`then`/`else`.
+`allOf`/`anyOf`/`oneOf`/`not`/`if`/`then`/`else`, and same-document static
+`$ref` (including `$defs`, forward references and recursive schemas).
 
 `format` and content keywords are annotations, **not format/content assertions**.
 Unknown extension keywords are annotations. Known malformed supported keywords
@@ -84,9 +86,9 @@ unsupported error, not an ignored assertion.
 
 ## Evidence and development
 
-The full pinned official draft2020-12 corpus currently reports **921/1301**
-standard cases matched: **0 mismatches, 372 unsupported, 8 rejected**. Optional
-cases are reported separately (**525/1036**); format assertions are not enabled.
+The full pinned official draft2020-12 corpus currently reports **962/1301**
+standard cases matched: **0 mismatches, 337 unsupported, 2 rejected**. Optional
+cases are reported separately (**535/1036**); format assertions are not enabled.
 This is visible progress toward conformance, **not a complete-draft claim**.
 Unsupported and rejected cases stay in the denominator.
 
@@ -115,8 +117,7 @@ fail CI; compilation, runtime/harness failures and invalid performance results
 full official corpus.
 
 The independent [benchmark workflow](.github/workflows/schema-benchmark.yml)
-runs on pushes to `main` and manual dispatch once this directory becomes the
-repository root. Standalone `.mbtx` orchestration uses **`moonx`**; the native
+runs on pushes to `main` and manual dispatch from this independent repository. Standalone `.mbtx` orchestration uses **`moonx`**; the native
 package runners can be invoked with `moon run`.
 
 ## Performance policy

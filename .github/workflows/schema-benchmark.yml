@@ -30,18 +30,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: hustcer/setup-moonbit@v1.22
-        with:
-          version: ${{ inputs.toolchain || '0.10.14+7d59c7ec9' }}
-          core-version: ${{ inputs.toolchain || '0.10.14+7d59c7ec9' }}
       - name: Resolve library dependencies
         run: moon update
       - name: Save official corpus, check, build native release and measure
         id: campaign
         timeout-minutes: 35
-        run: moonx benchmarks/run-campaign.mbtx ${{ inputs.smoke && 'smoke' || '' }}
+        run: moon run benchmarks/run-campaign.mbtx --target native -- ${{ inputs.smoke && 'smoke' || '' }}
       - name: Publish summary, including incomplete execution
         if: always() && (steps.campaign.outcome == 'success' || steps.campaign.outcome == 'failure')
-        run: moonx benchmarks/report.mbtx
+        run: moon run benchmarks/report.mbtx --target native
       - name: Preserve corpus, results and raw evidence even on failure
         if: always()
         uses: actions/upload-artifact@v4

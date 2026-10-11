@@ -153,13 +153,18 @@ fn JsonParser::number(self : JsonParser) -> Json raise ParseError {
     }
   }
   let token = self.source[start:self.offset].to_owned()
-  if ExactNumber::from_literal(token) is None {
-    self.invalid("number exceeds supported decimal representation")
-  }
-  let binary = match literal_double(token) {
-    Some(number) => number
-    None => {
+  // Parsing is a wire operation, not an arithmetic-range preflight. The
+  // compiler/evaluator reject unsupported exact scales at their own boundary.
+  let decoded = @json.parse(token) catch {
+    _ => {
       self.invalid("invalid number")
+      Json::null()
+    }
+  }
+  let binary = match decoded {
+    Number(number, ..) => number
+    _ => {
+      self.invalid("expected number token")
       0.0
     }
   }

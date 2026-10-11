@@ -14,6 +14,31 @@ test "parse: preserve numeric lexemes recursively and last duplicate key" {
   assert_eq(values[1].stringify(), "9007199254740993")
   assert_eq(@json-schema.parse("1e400").stringify(), "1e400")
   assert_eq(@json-schema.parse("1e-400").stringify(), "1e-400")
+  for
+    literal in [
+      "1e100001", "1e100000000000000000000", "-1e-100000000000000000000",
+    ] {
+    let number = @json-schema.parse(literal)
+    assert_eq(number.stringify(), literal)
+    try @json-schema.Schema::compile(Json::boolean(true)).valid(number) catch {
+      @json-schema.EvaluationError::InvalidNumber(..) => ()
+      error => fail("unexpected evaluation failure: \{Repr(error)}")
+    } noraise {
+      _ =>
+        fail(
+          "unsupported arithmetic scale must remain an explicit evaluation error",
+        )
+    }
+    try @json-schema.Schema::compile(Json::object({ "const": number })) catch {
+      @json-schema.CompileError::InvalidKeyword(..) => ()
+      error => fail("unexpected compilation failure: \{Repr(error)}")
+    } noraise {
+      _ =>
+        fail(
+          "unsupported arithmetic scale must remain an explicit compilation error",
+        )
+    }
+  }
 }
 
 ///|

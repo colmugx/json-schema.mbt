@@ -3,8 +3,8 @@ struct Options {
   manifest : String
   output : String
   file : String?
-  group : Int?
-  case_index : Int?
+  group : Int32?
+  case_index : Int32?
 }
 
 ///|
@@ -51,7 +51,7 @@ fn options(args : Array[String]) -> Options raise {
 }
 
 ///|
-fn execute(options : Options) -> Int raise {
+fn execute(options : Options) -> Int32 raise {
   let manifest = object(
     @schema.parse(@fs.read_file_to_string(options.manifest)),
   )
@@ -70,7 +70,7 @@ fn execute(options : Options) -> Int raise {
     "optional": Counts(),
     "proposal": Counts(),
   }
-  let observed : Map[String, Int] = {
+  let observed : Map[String, Int32] = {
     "standard": 0,
     "optional": 0,
     "proposal": 0,

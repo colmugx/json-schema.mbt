@@ -27,12 +27,12 @@ pub extend PatternError with @debug.Debug::{to_repr}
 const ECMA_WS : String = " \\t\\n\\v\\f\\r\\u{00A0}\\u{1680}\\u{2000}-\\u{200A}\\u{2028}\\u{2029}\\u{202F}\\u{205F}\\u{3000}\\u{FEFF}"
 
 ///|
-fn char_at(source : String, index : Int) -> Char {
+fn char_at(source : String, index : Int32) -> Char {
   source.get_char(index).unwrap_or_else(() => source[index].unsafe_to_char())
 }
 
 ///|
-fn char_width(c : Char) -> Int {
+fn char_width(c : Char) -> Int32 {
   if c.to_int() > 65535 {
     2
   } else {
@@ -123,7 +123,7 @@ fn translate(pattern : String) -> String raise PatternError {
 ///|
 // Parse one assertion, retaining balanced noncapturing groups. Captures across
 // assertions would change numbering/backreference semantics, so refuse them.
-fn assertion_end(pattern : String, start : Int) -> Int raise PatternError {
+fn assertion_end(pattern : String, start : Int32) -> Int32 raise PatternError {
   let mut index = start + 3
   let mut nesting = 1
   let mut in_class = false

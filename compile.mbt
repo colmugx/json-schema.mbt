@@ -5,7 +5,7 @@
 /// explicitly refused until their evaluation semantics are implemented.
 pub fn Schema::compile(
   document : Json,
-  max_depth? : Int = 128,
+  max_depth~ : Int32 = 128,
 ) -> Schema raise CompileError {
   if max_depth < 1 {
     raise CompileError::DepthLimit(max_depth)
@@ -27,8 +27,8 @@ fn compile_into(
   index : RefIndex,
   document : Json,
   path : String,
-  depth : Int,
-  limit : Int,
+  depth : Int32,
+  limit : Int32,
 ) -> Plan raise CompileError {
   if index.slots.contains(path) {
     index.visited[index.slots[path]] = true
@@ -47,8 +47,8 @@ fn compile_into(
 fn check_schema_json(
   value : Json,
   path : String,
-  depth : Int,
-  limit : Int,
+  depth : Int32,
+  limit : Int32,
 ) -> Unit raise CompileError {
   if depth > limit {
     raise CompileError::DepthLimit(limit)
@@ -99,7 +99,7 @@ fn compile_count(
   fields : Map[String, Json],
   key : String,
   path : String,
-) -> Int? raise CompileError {
+) -> Int32? raise CompileError {
   match fields.get(key) {
     None => None
     Some(value) => {
@@ -191,8 +191,8 @@ fn optional_node(
   fields : Map[String, Json],
   key : String,
   path : String,
-  depth : Int,
-  limit : Int,
+  depth : Int32,
+  limit : Int32,
 ) -> Plan? raise CompileError {
   fields
   .get(key)
@@ -206,8 +206,8 @@ fn compile_branches(
   index : RefIndex,
   value : Json,
   path : String,
-  depth : Int,
-  limit : Int,
+  depth : Int32,
+  limit : Int32,
 ) -> Array[Plan] raise CompileError {
   guard value is Array(branches) && !branches.is_empty() else {
     invalid_keyword(path, "expected a nonempty array of schemas")
@@ -246,8 +246,8 @@ fn compile_node(
   index : RefIndex,
   document : Json,
   path : String,
-  depth : Int,
-  limit : Int,
+  depth : Int32,
+  limit : Int32,
 ) -> Plan raise CompileError {
   if depth > limit {
     raise CompileError::DepthLimit(limit)

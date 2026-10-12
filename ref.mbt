@@ -10,11 +10,11 @@
 /// I/O-free and external URIs are refused, never fetched.
 priv struct RefIndex {
   root : Json
-  slots : Map[String, Int]
+  slots : Map[String, Int32]
   paths : Array[String]
   targets : Array[Json]
   visited : Array[Bool]
-  mut reference_depth : Int
+  mut reference_depth : Int32
   nodes : Array[Plan]
 }
 
@@ -23,8 +23,8 @@ fn index_walk(
   index : RefIndex,
   value : Json,
   pointer : String,
-  depth : Int,
-  limit : Int,
+  depth : Int32,
+  limit : Int32,
 ) -> Unit raise CompileError {
   if depth > limit {
     raise CompileError::DepthLimit(limit)
@@ -60,7 +60,10 @@ fn index_walk(
 /// One pre-compilation pass assigns an arena slot to every schema position,
 /// including positions that appear textually after the `$ref` keywords that
 /// target them, so forward references need no fixup phase.
-fn index_document(document : Json, limit : Int) -> RefIndex raise CompileError {
+fn index_document(
+  document : Json,
+  limit : Int32,
+) -> RefIndex raise CompileError {
   let index : RefIndex = {
     root: document,
     slots: Map([]),
@@ -81,8 +84,8 @@ fn index_document(document : Json, limit : Int) -> RefIndex raise CompileError {
 /// owns the slot writes its plan on return.
 fn ensure_compiled(
   index : RefIndex,
-  slot : Int,
-  limit : Int,
+  slot : Int32,
+  limit : Int32,
 ) -> Unit raise CompileError {
   if !index.visited[slot] {
     if index.reference_depth >= limit {
@@ -103,7 +106,7 @@ fn slot_at(
   index : RefIndex,
   pointer : String,
   path : String,
-) -> Int raise CompileError {
+) -> Int32 raise CompileError {
   match index.slots.get(pointer) {
     Some(slot) => slot
     // Unreachable: every object/boolean position receives a slot.
@@ -151,7 +154,7 @@ fn percent_decode(text : String, path : String) -> String raise CompileError {
 }
 
 ///|
-fn hex_digit(unit : Byte) -> Int? {
+fn hex_digit(unit : Byte) -> Int32? {
   let value = unit.to_int()
   let digit = value - '0'.to_int()
   if digit >= 0 && digit <= 9 {
@@ -206,7 +209,7 @@ fn pointer_unescape(
 ///|
 /// RFC 6901 array tokens: `"0"` or a canonical decimal without leading zeros.
 /// `-` and non-canonical forms never match, so they resolve as dangling.
-fn array_token(segment : String) -> Int? {
+fn array_token(segment : String) -> Int32? {
   let length = segment.length()
   if length <= 0 {
     return None
@@ -244,8 +247,8 @@ fn resolve_ref(
   index : RefIndex,
   reference : String,
   path : String,
-  limit : Int,
-) -> Int raise CompileError {
+  limit : Int32,
+) -> Int32 raise CompileError {
   let mut split = -1
   let units = reference.length()
   for position in 0..<units {

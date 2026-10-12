@@ -37,7 +37,7 @@ fn options(args : Array[String]) -> Options raise {
 }
 
 ///|
-fn validate_workload(workload : Workload) -> Int raise {
+fn validate_workload(workload : Workload) -> Int32 raise {
   let mut expected_true = 0
   for group in workload.groups {
     for instance in group.instances {
@@ -58,7 +58,7 @@ fn batch(
   workload : Workload,
   mode : String,
   sink : @bench.Bench,
-) -> (Int, Int) raise {
+) -> (Int32, Int32) raise {
   let mut operations = 0
   let mut accepted = 0
   for group in workload.groups {

@@ -4,7 +4,7 @@
 pub fn Schema::valid(
   self : Schema,
   value : Json,
-  max_depth? : Int = 128,
+  max_depth~ : Int32 = 128,
 ) -> Bool raise {
   check_instance(value, "", 0, max_depth)
   evaluate(self.plan, self.plan.nodes[0], value, "", None, 0, max_depth)
@@ -16,7 +16,7 @@ pub fn Schema::valid(
 pub fn Schema::faults(
   self : Schema,
   value : Json,
-  max_depth? : Int = 128,
+  max_depth~ : Int32 = 128,
 ) -> Array[Fault] raise {
   check_instance(value, "", 0, max_depth)
   let failures : Array[Fault] = []
@@ -38,8 +38,8 @@ pub fn Schema::faults(
 fn check_instance(
   value : Json,
   path : String,
-  depth : Int,
-  limit : Int,
+  depth : Int32,
+  limit : Int32,
 ) -> Unit raise EvaluationError {
   if limit < 1 || depth > limit {
     raise EvaluationError::DepthLimit(limit)
@@ -150,8 +150,8 @@ fn evaluate(
   value : Json,
   path : String,
   failures : Array[Fault]?,
-  depth : Int,
-  limit : Int,
+  depth : Int32,
+  limit : Int32,
 ) -> Bool raise {
   if depth > limit {
     raise EvaluationError::DepthLimit(limit)
@@ -184,8 +184,8 @@ fn evaluate_rule(
   value : Json,
   path : String,
   failures : Array[Fault]?,
-  depth : Int,
-  limit : Int,
+  depth : Int32,
+  limit : Int32,
 ) -> Bool raise {
   match rule {
     Types(types, location) => {
@@ -370,8 +370,8 @@ fn evaluate_object(
   value : Json,
   path : String,
   failures : Array[Fault]?,
-  depth : Int,
-  limit : Int,
+  depth : Int32,
+  limit : Int32,
 ) -> Bool raise {
   guard value is Object(fields) else { return true }
   let mut valid = true
@@ -526,8 +526,8 @@ fn evaluate_array(
   value : Json,
   path : String,
   failures : Array[Fault]?,
-  depth : Int,
-  limit : Int,
+  depth : Int32,
+  limit : Int32,
 ) -> Bool raise {
   guard value is Array(values) else { return true }
   let mut valid = true

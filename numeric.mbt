@@ -17,7 +17,7 @@
 /// validation uses the finite double's shortest decimal rendering. Original
 /// digits discarded by another parser cannot be recovered.
 pub enum ExactNumber {
-  Repr(coeff~ : @bigint.BigInt, scale~ : Int)
+  Repr(coeff~ : @bigint.BigInt, scale~ : Int32)
   Double(Double)
 }
 
@@ -53,7 +53,7 @@ pub fn ExactNumber::from_double(v : Double) -> ExactNumber {
 ///|
 priv struct Parts {
   coeff : String
-  scale : Int
+  scale : Int32
   negative : Bool
 }
 
@@ -219,7 +219,7 @@ pub extend NumericError with @debug.Debug::{to_repr}
 ///|
 fn ExactNumber::parts(
   self : ExactNumber,
-) -> (@bigint.BigInt, Int) raise NumericError {
+) -> (@bigint.BigInt, Int32) raise NumericError {
   match self {
     Repr(coeff~, scale~) => {
       if scale < -100000 || scale > 100000 {
@@ -240,7 +240,7 @@ fn ExactNumber::parts(
 }
 
 ///|
-fn decimal_power(exponent : Int) -> @bigint.BigInt {
+fn decimal_power(exponent : Int32) -> @bigint.BigInt {
   @bigint.BigInt::from_int(10).pow(@bigint.BigInt::from_int(exponent))
 }
 
@@ -281,7 +281,7 @@ pub fn ExactNumber::equal(
 pub fn ExactNumber::compare(
   self : ExactNumber,
   other : ExactNumber,
-) -> Int raise NumericError {
+) -> Int32 raise NumericError {
   let (a, b) = aligned(self, other)
   if a < b {
     -1
@@ -306,7 +306,7 @@ pub fn ExactNumber::multiple_of(
 }
 
 ///|
-pub fn ExactNumber::sign(self : ExactNumber) -> Int raise NumericError {
+pub fn ExactNumber::sign(self : ExactNumber) -> Int32 raise NumericError {
   let (coefficient, _) = self.parts()
   let zero = @bigint.BigInt::from_int(0)
   if coefficient < zero {

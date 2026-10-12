@@ -16,7 +16,7 @@ struct Group {
 struct Workload {
   groups : Array[Group]
   ids : Array[String]
-  excluded : Int
+  excluded : Int32
 }
 
 ///|
@@ -34,7 +34,7 @@ fn text(fields : Map[String, Json], key : String) -> String raise {
 }
 
 ///|
-fn integer(fields : Map[String, Json], key : String) -> Int raise {
+fn integer(fields : Map[String, Json], key : String) -> Int32 raise {
   guard fields.get(key) is Some(Number(value, ..)) &&
     value >= 0 &&
     value <= 2147483647.0 &&

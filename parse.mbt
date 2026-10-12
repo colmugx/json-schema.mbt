@@ -1,7 +1,7 @@
 ///|
 pub(all) suberror ParseError {
-  InvalidJson(position~ : Int, reason~ : String)
-  DepthLimit(Int)
+  InvalidJson(position~ : Int32, reason~ : String)
+  DepthLimit(Int32)
 } derive(Debug)
 
 ///|
@@ -10,8 +10,8 @@ pub extend ParseError with @debug.Debug::{to_repr}
 ///|
 priv struct JsonParser {
   source : String
-  mut offset : Int
-  limit : Int
+  mut offset : Int32
+  limit : Int32
 }
 
 ///|
@@ -19,7 +19,7 @@ priv struct JsonParser {
 /// Duplicate object keys use the last value. Offsets are UTF-16 code units.
 pub fn parse(
   source : StringView,
-  max_nesting_depth? : Int = 128,
+  max_nesting_depth~ : Int32 = 128,
 ) -> Json raise ParseError {
   if max_nesting_depth < 1 {
     raise DepthLimit(max_nesting_depth)
@@ -122,7 +122,7 @@ fn JsonParser::string(self : JsonParser) -> String raise ParseError {
 }
 
 ///|
-fn JsonParser::digits(self : JsonParser) -> Int {
+fn JsonParser::digits(self : JsonParser) -> Int32 {
   let start = self.offset
   while self.peek() is Some(c) && c >= '0' && c <= '9' {
     self.offset += 1
@@ -185,7 +185,7 @@ fn JsonParser::literal(
 }
 
 ///|
-fn JsonParser::value(self : JsonParser, depth : Int) -> Json raise ParseError {
+fn JsonParser::value(self : JsonParser, depth : Int32) -> Json raise ParseError {
   if depth > self.limit {
     raise DepthLimit(self.limit)
   }
@@ -195,7 +195,7 @@ fn JsonParser::value(self : JsonParser, depth : Int) -> Json raise ParseError {
     Some('t') => self.literal("true", Json::boolean(true))
     Some('f') => self.literal("false", Json::boolean(false))
     Some('n') => self.literal("null", Json::null())
-    Some('-' | '0'..='9') => self.number()
+    Some('-' | '0'..<='9') => self.number()
     Some('[') => {
       self.offset += 1
       let values : Array[Json] = []

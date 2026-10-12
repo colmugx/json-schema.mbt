@@ -4,12 +4,12 @@ pub(all) suberror CompileError {
   UnknownDialect(String)
   UnsupportedKeyword(path~ : String, keyword~ : String)
   UnsupportedPattern(path~ : String, pattern~ : String, reason~ : String)
-  DepthLimit(Int)
+  DepthLimit(Int32)
 } derive(Debug)
 
 ///|
 pub(all) suberror EvaluationError {
-  DepthLimit(Int)
+  DepthLimit(Int32)
   InvalidNumber(path~ : String)
 } derive(Debug)
 

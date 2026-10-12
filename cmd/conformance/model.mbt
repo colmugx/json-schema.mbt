@@ -1,10 +1,10 @@
 ///|
 struct Counts {
-  mut total : Int
-  mut passed : Int
-  mut mismatch : Int
-  mut unsupported : Int
-  mut rejected : Int
+  mut total : Int32
+  mut passed : Int32
+  mut mismatch : Int32
+  mut unsupported : Int32
+  mut rejected : Int32
 }
 
 ///|
@@ -52,7 +52,7 @@ fn text(fields : Map[String, Json], key : String) -> String raise {
 }
 
 ///|
-fn count(fields : Map[String, Json], key : String) -> Int raise {
+fn count(fields : Map[String, Json], key : String) -> Int32 raise {
   guard fields.get(key) is Some(Number(value, ..)) &&
     value >= 0 &&
     value <= 2147483647.0 &&

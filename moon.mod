@@ -15,6 +15,5 @@ preferred_target = "wasm"
 description = "Compile-once JSON Schema 2020-12 validator for MoonBit: exact decimal arithmetic, precise pattern semantics, no silent schema errors, no hidden I/O."
 
 import {
-  "moonbitlang/regexp@0.3.5",
   "moonbitlang/x@0.5.5",
 }

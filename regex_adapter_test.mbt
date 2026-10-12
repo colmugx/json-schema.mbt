@@ -19,7 +19,10 @@ test "patterns: ASCII shorthand classes and class context" {
 
 ///|
 test "patterns: ECMA whitespace and dot line terminators" {
-  for text in [" ", "\t", "\n", "\r", "\u{00A0}", "\u{2028}", "\u{FEFF}"] {
+  for
+    text in [
+      " ", "\t", "\n", "\r", "\u{000B}", "\u{00A0}", "\u{2028}", "\u{FEFF}",
+    ] {
     assert_true(matched("^\\s$", text))
     assert_true(matched("^[\\s]$", text))
     assert_false(matched("^\\S$", text))

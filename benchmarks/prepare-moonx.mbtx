@@ -1,16 +1,23 @@
+///|
 import {
   "moonbitlang/core/json",
   "moonbitlang/x@0.5.5/fs",
 }
 
+///|
 fn production_files(directory : String) -> Array[String] raise {
-  let files = @fs.read_dir(directory).to_owned().filter(name =>
-    name.has_suffix(".mbt") && !name.has_suffix("_test.mbt") &&
-    !name.has_suffix("_wbtest.mbt"))
+  let files = @fs.read_dir(directory)
+    .to_owned()
+    .filter(name => {
+      name.has_suffix(".mbt") &&
+      !name.has_suffix("_test.mbt") &&
+      !name.has_suffix("_wbtest.mbt")
+    })
   files.sort()
   files
 }
 
+///|
 fn main raise {
   guard @fs.path_exists("benchmark-results") else {
     fail("prepare the official corpus before generating the moonx entry")
@@ -18,7 +25,7 @@ fn main raise {
   // A script cannot import the unpublished checkout by registry coordinate.
   // Bundle its unchanged production source, not an older published library.
   let module_text = @fs.read_file_to_string("moon.mod")
-  guard module_text.contains("moonbitlang/regexp@0.3.5") &&
+  guard !module_text.contains("moonbitlang/regexp") &&
     module_text.contains("moonbitlang/x@0.5.5") else {
     fail("module dependency versions changed; update moonx imports to match")
   }
@@ -26,23 +33,28 @@ fn main raise {
   guard !library.is_empty() && library.contains("validate.mbt") else {
     fail("production library sources missing")
   }
-  guard !@fs.read_dir(".").any(name => @fs.is_dir(name) && @fs.path_exists(name + "/moon.pkg")) else {
+  guard !@fs.read_dir(".").any(name => {
+    @fs.is_dir(name) && @fs.path_exists(name + "/moon.pkg")
+  }) else {
     fail("new library subpackages require explicit bundling ownership")
   }
   let runner = production_files("cmd/benchmark")
   guard runner.length() == 3 &&
-    ["execution.mbt", "main.mbt", "workloads.mbt"].all(file => runner.contains(file)) else {
-    fail("benchmark source list changed; update moonx entry ownership explicitly")
+    ["execution.mbt", "main.mbt", "workloads.mbt"].all(file => {
+      runner.contains(file)
+    }) else {
+    fail(
+      "benchmark source list changed; update moonx entry ownership explicitly",
+    )
   }
   let source = StringBuilder()
   source <+ "import {\n"
-  for dependency in [
-    "moonbitlang/core/bigint", "moonbitlang/core/debug",
-    "moonbitlang/core/encoding/utf8", "moonbitlang/core/json",
-    "moonbitlang/core/string", "moonbitlang/core/bench",
-    "moonbitlang/core/env", "moonbitlang/regexp@0.3.5",
-    "moonbitlang/x@0.5.5/fs", "moonbitlang/x@0.5.5/sys",
-  ] {
+  for
+    dependency in [
+      "moonbitlang/core/bigint", "moonbitlang/core/debug", "moonbitlang/core/encoding/utf8",
+      "moonbitlang/core/json", "moonbitlang/core/string", "moonbitlang/core/bench",
+      "moonbitlang/core/env", "moonbitlang/x@0.5.5/fs", "moonbitlang/x@0.5.5/sys",
+    ] {
     source <+ "  \"\{dependency}\",\n"
   }
   source <+ "}\n\n"
@@ -55,7 +67,9 @@ fn main raise {
     let bundled = if file == "validate.mbt" {
       // Avoid colliding with the runner's builtin fail; rename no behavior.
       contents.replace_all(old="fail(", new="schema_fault(")
-    } else { contents }
+    } else {
+      contents
+    }
     source <+ "// Source: \{file}\n\{bundled}\n"
     evidence.push({ "path": file, "source": contents })
   }
@@ -68,15 +82,25 @@ fn main raise {
   }
   source <+ "///|\nfn execution_identity() -> (String, String, String) {\n"
   source <+ "  (\"moonx-wasm\", \"wasm\", \"moonx-default\")\n}\n"
-  @fs.write_string_to_file("benchmark-results/measurement.mbtx", source.to_string())
-  @fs.write_string_to_file("benchmark-results/measurement-source.json", ({
-    "version": 1,
-    "runtime": "moonx-wasm",
-    "source_layout": "standalone bundle; native uses separate library/runner packages",
-    "transformations": ["remove benchmark @schema namespace", "rename private validate.fail to schema_fault to avoid builtin collision", "replace execution identity only"],
-    "module": module_text,
-    "package": @fs.read_file_to_string("moon.pkg"),
-    "files": evidence.to_json(),
-  } : Json).stringify(indent=2))
+  @fs.write_string_to_file(
+    "benchmark-results/measurement.mbtx",
+    source.to_string(),
+  )
+  @fs.write_string_to_file(
+    "benchmark-results/measurement-source.json",
+    (
+      {
+        "version": 1,
+        "runtime": "moonx-wasm",
+        "source_layout": "standalone bundle; native uses separate library/runner packages",
+        "transformations": [
+          "remove benchmark @schema namespace", "rename private validate.fail to schema_fault to avoid builtin collision",
+          "replace execution identity only",
+        ],
+        "module": module_text,
+        "package": @fs.read_file_to_string("moon.pkg"),
+        "files": Json(evidence),
+      } : Json).stringify(indent=2),
+  )
   println("moonx entry: benchmark-results/measurement.mbtx")
 }

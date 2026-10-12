@@ -69,6 +69,14 @@ predicates use integer coefficients and decimal scales, not an epsilon or a
 rounded decimal quotient. Core-parsed or programmatically constructed numbers
 without a lexeme use the available finite `Double` representation instead.
 
+Parsing and arithmetic support are separate: the parser retains valid JSON
+number literals even when their exponent exceeds the evaluator's supported
+range. Exact arithmetic currently bounds the exponent and decimal scale to
+±100000; schema compilation or evaluation outside that range raises a typed
+error rather than rounding a value or returning an ordinary validation failure.
+This lets protocol callers safely round-trip such literals without claiming
+that the validator can execute constraints over every possible decimal scale.
+
 Do not construct inconsistent `Json::number(value, repr=...)` nodes: numeric
 representations are checked, not silently discarded.
 
@@ -79,6 +87,13 @@ bounds and `multipleOf`, string lengths and patterns, object properties/names/
 dependencies, 2020-12 `prefixItems`/`items`, array counts/`contains`/`uniqueItems`,
 `allOf`/`anyOf`/`oneOf`/`not`/`if`/`then`/`else`, and same-document static
 `$ref` (including `$defs`, forward references and recursive schemas).
+
+Patterns use core dynamic `Regex` with a small explicit compatibility layer;
+there is no `moonbitlang/regexp` runtime dependency. It preserves ECMA shorthand,
+whitespace/dot handling, General_Category properties and leading lookahead chains.
+Backreferences currently support only the exact `^(body)\\1$` profile; other
+unsupported syntax raises a typed error, never a silent non-match. See
+[the compatibility profile and upstream review checklist](REGEX-COMPATIBILITY.md).
 
 `format` and content keywords are annotations, **not format/content assertions**.
 Unknown extension keywords are annotations. Known malformed supported keywords

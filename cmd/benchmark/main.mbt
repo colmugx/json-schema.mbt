@@ -174,7 +174,7 @@ fn execute(options : Options) -> Unit raise {
     "ns_per_operation": elapsed_us * 1000 / total_operations.to_double(),
     "operations_per_second": total_operations.to_double() * 1000000 / elapsed_us,
     "warmup_batches": warmup_batches,
-    "eligible_case_ids": workload.ids.to_json(),
+    "eligible_case_ids": Json(workload.ids),
     "excluded_cases": workload.excluded,
     "eligible_schemas": workload.groups.length(),
     "timing_contract": "parse/startup/report excluded; loop and counter bookkeeping included; compile mode uses optimizer sink",

@@ -4,9 +4,10 @@
 ///|
 /// Opaque compiled pattern. No external regexp type leaks through this API.
 pub struct CompiledPattern {
-  priv expression : @regexp.Regexp
-  priv assertions : Array[(Bool, @regexp.Regexp)]
+  priv expression : @string.Regex
+  priv assertions : Array[(Bool, @string.Regex)]
   priv anchored : Bool
+  priv repeated_capture : Bool
 }
 
 ///|
@@ -24,7 +25,7 @@ pub(all) suberror PatternError {
 pub extend PatternError with @debug.Debug::{to_repr}
 
 ///|
-const ECMA_WS : String = " \\t\\n\\v\\f\\r\\u{00A0}\\u{1680}\\u{2000}-\\u{200A}\\u{2028}\\u{2029}\\u{202F}\\u{205F}\\u{3000}\\u{FEFF}"
+const ECMA_WS : String = " \\t\\n\\u{000B}\\f\\r\\u{00A0}\\u{1680}\\u{2000}-\\u{200A}\\u{2028}\\u{2029}\\u{202F}\\u{205F}\\u{3000}\\u{FEFF}"
 
 ///|
 fn char_at(source : String, index : Int32) -> Char {
@@ -41,6 +42,7 @@ fn char_width(c : Char) -> Int32 {
 }
 
 ///|
+#deprecated("Temporary ECMA classes: recheck moonbitlang/regexp semantics before removing", skip_current_package=true)
 fn shorthand(c : Char, in_class : Bool) -> String? raise PatternError {
   let content = match c {
     'd' => "0-9"
@@ -62,6 +64,7 @@ fn shorthand(c : Char, in_class : Bool) -> String? raise PatternError {
 }
 
 ///|
+#deprecated("Temporary ECMA translation: recheck moonbitlang/regexp before removing", skip_current_package=true)
 fn translate(pattern : String) -> String raise PatternError {
   let output = StringBuilder()
   let mut index = 0
@@ -70,6 +73,36 @@ fn translate(pattern : String) -> String raise PatternError {
     let c = char_at(pattern, index)
     if c == '\\' && index + 1 < pattern.length() {
       let next = char_at(pattern, index + 1)
+      if next == 'v' {
+        output.write_string("\\u{000B}")
+        index += 2
+        continue
+      }
+      if next == 'p' || next == 'P' {
+        let (replacement, after) = unicode_property(pattern, index, in_class)
+        output.write_string(replacement)
+        index = after
+        continue
+      }
+      if next == 'x' {
+        guard index + 3 < pattern.length() else {
+          raise NotSupported("incomplete hexadecimal escape")
+        }
+        let hex = pattern[index + 2:index + 4].to_owned()
+        for digit in hex {
+          guard digit is ('0'..<='9' | 'a'..<='f' | 'A'..<='F') else {
+            raise NotSupported("invalid hexadecimal escape")
+          }
+        }
+        output.write_string("\\u00" + hex)
+        index += 4
+        continue
+      }
+      if next is ('0'..<='9') || next == 'k' {
+        raise NotSupported(
+          "backreferences outside the anchored repeated-capture profile are unsupported",
+        )
+      }
       if in_class &&
         (next == 'd' || next == 'w' || next == 's') &&
         (
@@ -123,6 +156,7 @@ fn translate(pattern : String) -> String raise PatternError {
 ///|
 // Parse one assertion, retaining balanced noncapturing groups. Captures across
 // assertions would change numbering/backreference semantics, so refuse them.
+#deprecated("Temporary leading lookahead parser: recheck moonbitlang/regexp before removing", skip_current_package=true)
 fn assertion_end(pattern : String, start : Int32) -> Int32 raise PatternError {
   let mut index = start + 3
   let mut nesting = 1
@@ -189,14 +223,23 @@ fn has_top_alternative(pattern : String) -> Bool {
 }
 
 ///|
-/// Unanchored search semantics. Supports ordinary regexp.mbt patterns with
+/// Unanchored search semantics. Supports core dynamic Regex patterns with
 /// ECMA digit/word/whitespace rewrites and a precise leading lookahead chain.
 /// Other lookarounds and ambiguous rewrites are explicit unsupported errors.
 pub fn compile_pattern(pattern : String) -> PatternSupport {
   try {
+    if repeated_capture_body(pattern) is Some(body) {
+      let expression = @string.Regex("^(?:" + translate(body) + ")$")
+      return Supported({
+        expression,
+        assertions: [],
+        anchored: true,
+        repeated_capture: true,
+      })
+    }
     let anchored = pattern.has_prefix("^")
     let mut offset = if anchored { 1 } else { 0 }
-    let assertions : Array[(Bool, @regexp.Regexp)] = []
+    let assertions : Array[(Bool, @string.Regex)] = []
     while pattern[offset:].has_prefix("(?=") ||
           pattern[offset:].has_prefix("(?!") {
       if !anchored {
@@ -207,13 +250,11 @@ pub fn compile_pattern(pattern : String) -> PatternSupport {
       let positive = pattern[offset:].has_prefix("(?=")
       let end = assertion_end(pattern, offset)
       let body = pattern[offset + 3:end].to_owned()
-      assertions.push(
-        (positive, @regexp.compile("^(?:" + translate(body) + ")")),
-      )
+      assertions.push((positive, @string.Regex("^(?:" + translate(body) + ")")))
       offset = end + 1
     }
     let expression = if assertions.is_empty() {
-      @regexp.compile(translate(pattern))
+      @string.Regex(translate(pattern))
     } else {
       let tail = pattern[offset:].to_owned()
       if has_top_alternative(tail) {
@@ -221,9 +262,9 @@ pub fn compile_pattern(pattern : String) -> PatternSupport {
           "top-level alternatives after a lookahead chain are not supported",
         )
       }
-      @regexp.compile("^(?:" + translate(tail) + ")")
+      @string.Regex("^(?:" + translate(tail) + ")")
     }
-    Supported({ expression, assertions, anchored, })
+    Supported({ expression, assertions, anchored, repeated_capture: false, })
   } catch {
     NotSupported(reason) => Unsupported(reason~)
     _ => Unsupported(reason="pattern rejected by the regexp engine")
@@ -244,11 +285,15 @@ pub fn pattern_matches(
       }
       for entry in compiled.assertions {
         let (positive, assertion) = entry
-        if assertion.execute(text).matched() != positive {
+        if (assertion.execute(text) is Some(_)) != positive {
           return false
         }
       }
-      compiled.expression.execute(text).matched()
+      if compiled.repeated_capture {
+        repeated_capture_matches(compiled.expression, text)
+      } else {
+        compiled.expression.execute(text) is Some(_)
+      }
     }
   }
 }

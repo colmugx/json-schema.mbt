@@ -1,5 +1,12 @@
 ///|
-test "core adapter: repeated captures preserve choice, empty and scalar boundaries" {
+test "pattern compatibility: repeated captures preserve choice, empty and scalar boundaries" {
+  let bounded = @json-schema.compile_pattern("^a{257}$")
+  assert_true(
+    @json-schema.pattern_matches(bounded, Array::make(257, "a").join("")),
+  )
+  assert_false(
+    @json-schema.pattern_matches(bounded, Array::make(256, "a").join("")),
+  )
   for
     (pattern, text, expected) in [
       ("^(a|aa)\\1$", "aaaa", true),
@@ -18,7 +25,7 @@ test "core adapter: repeated captures preserve choice, empty and scalar boundari
 }
 
 ///|
-test "core adapter: Unicode categories and hexadecimal escapes" {
+test "pattern compatibility: Unicode categories and hexadecimal escapes" {
   for
     (pattern, text, expected) in [
       ("^\\p{General_Category=Lu}+$", "ΑB", true),
@@ -39,11 +46,11 @@ test "core adapter: Unicode categories and hexadecimal escapes" {
 }
 
 ///|
-test "core adapter: unsupported features remain explicit errors" {
+test "pattern compatibility: unsupported features remain explicit errors" {
   for
     pattern in [
       "(a)\\1", "^(a)(b)\\2$", "^(a$)\\1$", "^(a\\b)\\1$", "\\p{Script=Greek}", "[\\P{Lu}]",
-      "a{257}", "\\xZZ",
+      "\\xZZ",
     ] {
     let support = @json-schema.compile_pattern(pattern)
     assert_true(support is Unsupported(..), msg=pattern)

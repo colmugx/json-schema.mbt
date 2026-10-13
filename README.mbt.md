@@ -88,8 +88,8 @@ dependencies, 2020-12 `prefixItems`/`items`, array counts/`contains`/`uniqueItem
 `allOf`/`anyOf`/`oneOf`/`not`/`if`/`then`/`else`, and same-document static
 `$ref` (including `$defs`, forward references and recursive schemas).
 
-Patterns use core dynamic `Regex` with a small explicit compatibility layer;
-there is no `moonbitlang/regexp` runtime dependency. It preserves ECMA shorthand,
+Patterns use `moonbitlang/regexp@0.3.6` with a small explicit compatibility layer.
+The adapter preserves ECMA shorthand,
 whitespace/dot handling, General_Category properties and leading lookahead chains.
 Backreferences currently support only the exact `^(body)\\1$` profile; other
 unsupported syntax raises a typed error, never a silent non-match. See

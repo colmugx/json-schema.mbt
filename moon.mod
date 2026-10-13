@@ -1,6 +1,6 @@
 name = "colmugx/json-schema"
 
-version = "0.1.0"
+version = "0.1.1"
 
 readme = "README.mbt.md"
 
@@ -16,4 +16,5 @@ description = "Compile-once JSON Schema 2020-12 validator for MoonBit: exact dec
 
 import {
   "moonbitlang/x@0.5.5",
+  "moonbitlang/regexp@0.3.6",
 }

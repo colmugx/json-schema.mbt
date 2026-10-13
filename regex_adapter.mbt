@@ -4,8 +4,8 @@
 ///|
 /// Opaque compiled pattern. No external regexp type leaks through this API.
 pub struct CompiledPattern {
-  priv expression : @string.Regex
-  priv assertions : Array[(Bool, @string.Regex)]
+  priv expression : @regexp.Regexp
+  priv assertions : Array[(Bool, @regexp.Regexp)]
   priv anchored : Bool
   priv repeated_capture : Bool
 }
@@ -25,7 +25,7 @@ pub(all) suberror PatternError {
 pub extend PatternError with @debug.Debug::{to_repr}
 
 ///|
-const ECMA_WS : String = " \\t\\n\\u{000B}\\f\\r\\u{00A0}\\u{1680}\\u{2000}-\\u{200A}\\u{2028}\\u{2029}\\u{202F}\\u{205F}\\u{3000}\\u{FEFF}"
+const ECMA_WS : String = " \\t\\n\\v\\f\\r\\u{00A0}\\u{1680}\\u{2000}-\\u{200A}\\u{2028}\\u{2029}\\u{202F}\\u{205F}\\u{3000}\\u{FEFF}"
 
 ///|
 fn char_at(source : String, index : Int32) -> Char {
@@ -42,7 +42,7 @@ fn char_width(c : Char) -> Int32 {
 }
 
 ///|
-#deprecated("Temporary ECMA classes: recheck moonbitlang/regexp semantics before removing", skip_current_package=true)
+#deprecated("Temporary ECMA classes: recheck moonbitlang/regexp before removing", skip_current_package=true)
 fn shorthand(c : Char, in_class : Bool) -> String? raise PatternError {
   let content = match c {
     'd' => "0-9"
@@ -73,11 +73,6 @@ fn translate(pattern : String) -> String raise PatternError {
     let c = char_at(pattern, index)
     if c == '\\' && index + 1 < pattern.length() {
       let next = char_at(pattern, index + 1)
-      if next == 'v' {
-        output.write_string("\\u{000B}")
-        index += 2
-        continue
-      }
       if next == 'p' || next == 'P' {
         let (replacement, after) = unicode_property(pattern, index, in_class)
         output.write_string(replacement)
@@ -223,15 +218,14 @@ fn has_top_alternative(pattern : String) -> Bool {
 }
 
 ///|
-/// Unanchored search semantics. Supports core dynamic Regex patterns with
+/// Unanchored search semantics. Supports ordinary regexp.mbt patterns with
 /// ECMA digit/word/whitespace rewrites and a precise leading lookahead chain.
 /// Other lookarounds and ambiguous rewrites are explicit unsupported errors.
 pub fn compile_pattern(pattern : String) -> PatternSupport {
   try {
     if repeated_capture_body(pattern) is Some(body) {
-      let expression = @string.Regex("^(?:" + translate(body) + ")$")
       return Supported({
-        expression,
+        expression: @regexp.compile("^(?:" + translate(body) + ")$"),
         assertions: [],
         anchored: true,
         repeated_capture: true,
@@ -239,7 +233,7 @@ pub fn compile_pattern(pattern : String) -> PatternSupport {
     }
     let anchored = pattern.has_prefix("^")
     let mut offset = if anchored { 1 } else { 0 }
-    let assertions : Array[(Bool, @string.Regex)] = []
+    let assertions : Array[(Bool, @regexp.Regexp)] = []
     while pattern[offset:].has_prefix("(?=") ||
           pattern[offset:].has_prefix("(?!") {
       if !anchored {
@@ -250,11 +244,13 @@ pub fn compile_pattern(pattern : String) -> PatternSupport {
       let positive = pattern[offset:].has_prefix("(?=")
       let end = assertion_end(pattern, offset)
       let body = pattern[offset + 3:end].to_owned()
-      assertions.push((positive, @string.Regex("^(?:" + translate(body) + ")")))
+      assertions.push(
+        (positive, @regexp.compile("^(?:" + translate(body) + ")")),
+      )
       offset = end + 1
     }
     let expression = if assertions.is_empty() {
-      @string.Regex(translate(pattern))
+      @regexp.compile(translate(pattern))
     } else {
       let tail = pattern[offset:].to_owned()
       if has_top_alternative(tail) {
@@ -262,7 +258,7 @@ pub fn compile_pattern(pattern : String) -> PatternSupport {
           "top-level alternatives after a lookahead chain are not supported",
         )
       }
-      @string.Regex("^(?:" + translate(tail) + ")")
+      @regexp.compile("^(?:" + translate(tail) + ")")
     }
     Supported({ expression, assertions, anchored, repeated_capture: false, })
   } catch {
@@ -285,14 +281,14 @@ pub fn pattern_matches(
       }
       for entry in compiled.assertions {
         let (positive, assertion) = entry
-        if (assertion.execute(text) is Some(_)) != positive {
+        if assertion.execute(text).matched() != positive {
           return false
         }
       }
       if compiled.repeated_capture {
         repeated_capture_matches(compiled.expression, text)
       } else {
-        compiled.expression.execute(text) is Some(_)
+        compiled.expression.execute(text).matched()
       }
     }
   }

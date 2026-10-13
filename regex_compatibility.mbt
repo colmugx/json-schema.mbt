@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 ///|
-#deprecated("Temporary Unicode property expansion: recheck moonbitlang/regexp before removing", skip_current_package=true)
+#deprecated("Temporary General_Category normalization: recheck moonbitlang/regexp before removing", skip_current_package=true)
 fn unicode_property(
   pattern : String,
   start : Int32,
@@ -24,12 +24,6 @@ fn unicode_property(
   } else {
     name
   }
-  guard general_category_property_value_alises.get(bare) is Some(category) else {
-    raise NotSupported("unsupported Unicode property: " + name)
-  }
-  guard general_category_ranges.get(category) is Some(ranges) else {
-    raise NotSupported("missing Unicode category ranges: " + category)
-  }
   let negated = pattern[start + 1] == 'P'
   if in_class && negated {
     raise NotSupported("negated Unicode property inside a class is unsupported")
@@ -43,23 +37,7 @@ fn unicode_property(
       "Unicode properties used as range endpoints are unsupported",
     )
   }
-  let output = StringBuilder()
-  if !in_class {
-    output.write_string(if negated { "[^" } else { "[" })
-  }
-  for i = 0; i < ranges.length(); i = i + 2 {
-    // Escaping scalar values avoids accidental class syntax in generated data.
-    output.write_string("\\u{" + ranges[i].to_int().to_string(radix=16) + "}")
-    if ranges[i] != ranges[i + 1] {
-      output.write_string(
-        "-\\u{" + ranges[i + 1].to_int().to_string(radix=16) + "}",
-      )
-    }
-  }
-  if !in_class {
-    output.write_string("]")
-  }
-  (output.to_string(), end + 1)
+  ("\\" + (if negated { "P" } else { "p" }) + "{" + bare + "}", end + 1)
 }
 
 ///|
@@ -123,7 +101,7 @@ fn repeated_capture_body(pattern : String) -> String? raise PatternError {
 
 ///|
 #deprecated("Temporary anchored backreference matcher: recheck moonbitlang/regexp before removing", skip_current_package=true)
-fn repeated_capture_matches(expression : @string.Regex, text : String) -> Bool {
+fn repeated_capture_matches(expression : @regexp.Regexp, text : String) -> Bool {
   if text.length() % 2 != 0 {
     return false
   }
@@ -132,5 +110,5 @@ fn repeated_capture_matches(expression : @string.Regex, text : String) -> Bool {
     text.get_view(start=middle) is Some(second) else {
     return false
   }
-  first == second && expression.execute(first) is Some(_)
+  first == second && expression.execute(first).matched()
 }

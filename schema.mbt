@@ -90,6 +90,7 @@ priv struct ResourceMeta {
   uri : String?
   document_uri : String?
   dynamic_anchors : Map[String, Int32]
+  dialect : Dialect
 }
 
 ///|

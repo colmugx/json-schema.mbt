@@ -20,6 +20,8 @@ priv struct RefIndex {
   registry : Map[String, Int32]
   anchors : Map[Int32, Map[String, Int32]]
   mut collect_evaluated : Bool
+  dialects : Map[String, Dialect]
+  resolving_dialects : Set[String]
 }
 
 ///|
@@ -84,64 +86,12 @@ fn resolve_reference(
   limit : Int32,
 ) -> (Int32, String?) raise CompileError {
   validate_uri_reference(reference, path)
-  match split_at_first(reference, '#') {
-    (before, fragment) =>
-      if before is "" {
-        (resource, fragment)
-      } else {
-        let identity = canonical_uri(index.resources[resource].uri, before)
-        match index.registry.get(identity) {
-          Some(target) => (target, fragment)
-          None => {
-            let mut candidate : Int32? = None
-            for doc, source in index.docs {
-              if source.identity == Some(identity) ||
-                document_has_identity(source.root, source.identity, identity) {
-                if candidate is Some(_) {
-                  invalid_keyword(
-                    path,
-                    "ambiguous supplied resource identity: " + identity,
-                  )
-                }
-                candidate = Some(doc)
-              }
-            }
-            match candidate {
-              Some(doc) => {
-                scan_resource(
-                  index,
-                  doc,
-                  index.docs[doc].root,
-                  "",
-                  0,
-                  true,
-                  0,
-                  limit,
-                )
-                match index.registry.get(identity) {
-                  Some(target) => (target, fragment)
-                  None => {
-                    invalid_keyword(
-                      path,
-                      "resource identity was not registered: " + identity,
-                    )
-                    (0, None)
-                  }
-                }
-              }
-              None => {
-                invalid_keyword(
-                  path,
-                  "reference does not resolve: no supplied schema resource \"" +
-                  identity +
-                  "\"",
-                )
-                (0, None)
-              }
-            }
-          }
-        }
-      }
+  let (before, fragment) = split_at_first(reference, '#')
+  if before == "" {
+    (resource, fragment)
+  } else {
+    let identity = canonical_uri(index.resources[resource].uri, before)
+    (load_resource(index, identity, path, limit), fragment)
   }
 }
 

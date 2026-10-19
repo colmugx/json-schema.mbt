@@ -32,6 +32,9 @@ pub fn Schema::compile(
   while true {
     let pending : Array[Int32] = []
     for resource in index.resources {
+      if resource.dialect.meta_slot is Some(slot) && !index.visited[slot] {
+        pending.push(slot)
+      }
       for _, slot in resource.dynamic_anchors {
         if !index.visited[slot] {
           pending.push(slot)
@@ -45,13 +48,40 @@ pub fn Schema::compile(
       ensure_compiled(index, slot, max_depth)
     }
   }
-  {
-    plan: {
-      nodes: index.nodes,
-      resources: index.resources,
-      collect_evaluated: index.collect_evaluated,
-    },
+  let program : Program = {
+    nodes: index.nodes,
+    resources: index.resources,
+    collect_evaluated: index.collect_evaluated,
   }
+  for resource, metadata in index.resources {
+    if metadata.dialect.meta_slot is Some(target) {
+      let (doc, pointer) = index.sites[resource]
+      let slot = slot_at(index, doc, pointer, pointer)
+      let valid = evaluate(
+        program,
+        program.nodes[target],
+        index.targets[slot],
+        "",
+        None,
+        0,
+        max_depth,
+      ) catch {
+        EvaluationError::DepthLimit(_) =>
+          raise CompileError::DepthLimit(max_depth)
+        error => {
+          invalid_keyword(pointer, "metaschema evaluation failed: \{error}")
+          false
+        }
+      }
+      if !valid {
+        invalid_keyword(
+          pointer,
+          "schema does not satisfy metaschema: " + metadata.dialect.uri,
+        )
+      }
+    }
+  }
+  { plan: program, }
 }
 
 ///|
@@ -323,7 +353,11 @@ fn compile_node(
       return Accept
     }
   }
-  guard document is Object(fields) else { return Accept }
+  guard document is Object(original_fields) else { return Accept }
+  let fields = dialect_fields(
+    original_fields,
+    index.resources[resource].dialect,
+  )
   let rules : Array[Rule] = []
   // `unevaluated*` assertions must observe every other keyword's evaluation,
   // so their rules compile like the rest but append after all of them.
@@ -337,9 +371,7 @@ fn compile_node(
           invalid_keyword(location, "expected a dialect URI")
           continue
         }
-        if uri != "https://json-schema.org/draft/2020-12/schema" {
-          raise UnknownDialect(uri)
-        }
+        ignore(resolve_dialect(index, uri, location, limit))
       }
       "$ref" => {
         guard value is String(reference) else {
@@ -363,7 +395,9 @@ fn compile_node(
       // Resource identity keywords were validated and registered by the
       // resource scan (`scan_resource`) before compilation started.
       "$id" | "$anchor" | "$dynamicAnchor" => ()
-      "$vocabulary" => raise UnsupportedKeyword(path=location, keyword=key)
+      // Declarations affect schemas that select this document as a metaschema,
+      // not the semantics of this document while it is itself being validated.
+      "$vocabulary" => ()
       "unevaluatedProperties" => {
         index.collect_evaluated = true
         unevaluated_properties = Some(

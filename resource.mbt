@@ -101,6 +101,8 @@ fn index_program(
     registry: Map([]),
     anchors: Map([]),
     collect_evaluated: false,
+    dialects: Map([]),
+    resolving_dialects: Set([]),
   }
   match base_uri {
     Some(uri) => validate_document_uri(uri, "base_uri")
@@ -113,14 +115,15 @@ fn index_program(
     base_uri.map(canonical_document_uri),
     limit,
   )
-  scan_resource(index, doc, document, "", 0, true, 0, limit)
   match resources {
     Some(entries) => {
       let seen : Set[String] = Set([])
       for key, entry in entries {
         validate_document_uri(key, "resources")
         let identity = canonical_document_uri(key)
-        if seen.contains(identity) || index.registry.contains(identity) {
+        if seen.contains(identity) ||
+          builtin_metaschema_uri(identity) ||
+          base_uri.map(canonical_document_uri) == Some(identity) {
           invalid_keyword("resources", "duplicate retrieval URI: " + identity)
         }
         seen.add(identity)
@@ -128,6 +131,17 @@ fn index_program(
       }
     }
     None => ()
+  }
+  let supplied = index.docs.length()
+  scan_resource(index, doc, document, "", 0, true, 0, limit)
+  for doc in 1..<supplied {
+    if index.docs[doc].identity is Some(identity) &&
+      index.registry.get(identity) is Some(resource) {
+      let (owner, _) = index.sites[resource]
+      if owner != doc {
+        invalid_keyword("resources", "duplicate retrieval URI: " + identity)
+      }
+    }
   }
   index
 }
@@ -153,6 +167,30 @@ fn scan_resource(
   if depth > limit {
     raise CompileError::DepthLimit(limit)
   }
+  let inherited = if root_position {
+    standard_dialect()
+  } else {
+    index.resources[resource].dialect
+  }
+  let dialect = if value is Object(fields) &&
+    fields.get("$schema") is Some(declaration) {
+    if !root_position && !fields.contains("$id") {
+      invalid_keyword(
+        pointer_step(pointer, "$schema"),
+        "$schema is only allowed at a resource root",
+      )
+    }
+    guard declaration is String(uri) else {
+      invalid_keyword(
+        pointer_step(pointer, "$schema"),
+        "expected a dialect URI",
+      )
+      return
+    }
+    resolve_dialect(index, uri, pointer_step(pointer, "$schema"), limit)
+  } else {
+    inherited
+  }
   let current = match value {
     Object(fields) =>
       match fields.get("$id") {
@@ -167,6 +205,7 @@ fn scan_resource(
               index.resources[resource].uri
             },
             id_value,
+            dialect,
           )
         None =>
           if root_position {
@@ -179,6 +218,7 @@ fn scan_resource(
               index.docs[doc].identity,
               [],
               pointer_step(pointer, "$id"),
+              dialect,
             )
           } else {
             resource
@@ -195,6 +235,7 @@ fn scan_resource(
           index.docs[doc].identity,
           [],
           pointer_step(pointer, "$id"),
+          dialect,
         )
       } else {
         resource
@@ -231,7 +272,7 @@ fn scan_resource(
       pointer_step(pointer, "$dynamicAnchor"),
     )
   }
-  for entry in schema_children(fields, pointer) {
+  for entry in schema_children(dialect_fields(fields, dialect), pointer) {
     let (location, child) = entry
     scan_resource(index, doc, child, location, current, false, depth + 1, limit)
   }
@@ -246,6 +287,7 @@ fn claim_id_resource(
   pointer : String,
   base : String?,
   id_value : Json,
+  dialect : Dialect,
 ) -> Int32 raise CompileError {
   let location = pointer_step(pointer, "$id")
   guard id_value is String(text) else {
@@ -269,7 +311,14 @@ fn claim_id_resource(
   if pointer == "" && base is Some(key) && key != identity {
     aliases.push(key)
   }
-  make_resource(index, doc, pointer, Some(identity), aliases, location)
+  if builtin_metaschema(identity) is Some(expected) &&
+    index.docs[doc].root != expected {
+    invalid_keyword(
+      location,
+      "reserved built-in metaschema identity: " + identity,
+    )
+  }
+  make_resource(index, doc, pointer, Some(identity), aliases, location, dialect)
 }
 
 ///|
@@ -280,6 +329,7 @@ fn make_resource(
   uri : String?,
   aliases : Array[String],
   location : String,
+  dialect : Dialect,
 ) -> Int32 raise CompileError {
   match uri {
     Some(identity) =>
@@ -306,6 +356,7 @@ fn make_resource(
         }
     },
     dynamic_anchors: Map([]),
+    dialect,
   })
   index.sites.push((doc, pointer))
   match uri {

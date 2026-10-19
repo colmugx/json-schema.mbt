@@ -111,6 +111,7 @@ fn compile_status(error : @schema.CompileError) -> String {
   match error {
     @schema.CompileError::UnsupportedKeyword(..)
     | @schema.CompileError::UnsupportedPattern(..)
+    | @schema.CompileError::UnsupportedVocabulary(..)
     | @schema.CompileError::DepthLimit(_) => "unsupported"
     @schema.CompileError::InvalidKeyword(..)
     | @schema.CompileError::UnknownDialect(_) => "rejected"

@@ -2,6 +2,7 @@
 pub(all) suberror CompileError {
   InvalidKeyword(path~ : String, reason~ : String)
   UnknownDialect(String)
+  UnsupportedVocabulary(dialect~ : String, vocabulary~ : String)
   UnsupportedKeyword(path~ : String, keyword~ : String)
   UnsupportedPattern(path~ : String, pattern~ : String, reason~ : String)
   DepthLimit(Int32)

@@ -40,9 +40,11 @@ fn schema_children(
 // Discover aliases without registering unrelated documents' resource namespaces.
 // Loading one matching source later performs the actual validation/collision check.
 fn document_has_identity(
+  index : RefIndex,
   value : Json,
   base : String?,
   identity : String,
+  inherited : Dialect,
 ) -> Bool {
   guard value is Object(fields) else { return false }
   let current = match fields.get("$id") {
@@ -52,9 +54,10 @@ fn document_has_identity(
   if current == Some(identity) {
     return true
   }
-  for entry in schema_children(fields, "") {
+  let dialect = discovery_dialect(index, fields, inherited)
+  for entry in schema_children(dialect_fields(fields, dialect), "") {
     let (_, child) = entry
-    if document_has_identity(child, current, identity) {
+    if document_has_identity(index, child, current, identity, dialect) {
       return true
     }
   }

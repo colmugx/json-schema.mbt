@@ -186,39 +186,18 @@ test "malformed and unresolvable references fail compilation" {
 }
 
 ///|
-test "external, anchor-style and identityful references stay unsupported" {
+test "unloaded external resources and missing anchors are compile errors" {
   for
-    entry in [
-      ("$ref", "{\"$ref\":\"http://localhost:1234/draft2020-12/tree\"}"),
-      ("$ref", "{\"$ref\":\"other.json#/foo\"}"),
-      ("$ref", "{\"$ref\":\"urn:example:tree\"}"),
-      ("$anchor", "{\"$ref\":\"#anchor\"}"),
-      ("$anchor", "{\"$ref\":\"#%66oo\"}"),
+    source in [
+      "{\"$ref\":\"http://localhost:1234/draft2020-12/tree\"}", "{\"$ref\":\"other.json#/foo\"}",
+      "{\"$ref\":\"urn:example:tree\"}", "{\"$ref\":\"#anchor\"}", "{\"$ref\":\"#%66oo\"}",
+      "{\"$dynamicRef\":\"#meta\"}",
     ] {
-    let (expected, source) = entry
     try ref_schema(source) catch {
-      @json-schema.CompileError::UnsupportedKeyword(keyword~, ..) =>
-        assert_eq(keyword, expected)
+      @json-schema.CompileError::InvalidKeyword(..) => ()
       error => raise error
     } noraise {
-      _ => fail("expected UnsupportedKeyword: " + source)
-    }
-  }
-  for
-    entry in [
-      ("$id", "{\"$id\":\"https://example.com/a\",\"type\":\"string\"}"),
-      ("$anchor", "{\"$anchor\":\"meta\",\"type\":\"string\"}"),
-      ("$dynamicRef", "{\"$dynamicRef\":\"#meta\"}"),
-      ("$dynamicAnchor", "{\"$dynamicAnchor\":\"meta\"}"),
-      ("unevaluatedProperties", "{\"unevaluatedProperties\":false}"),
-    ] {
-    let (expected, source) = entry
-    try ref_schema(source) catch {
-      @json-schema.CompileError::UnsupportedKeyword(keyword~, ..) =>
-        assert_eq(keyword, expected)
-      error => raise error
-    } noraise {
-      _ => fail("expected UnsupportedKeyword: " + source)
+      _ => fail("expected unresolved-reference error: " + source)
     }
   }
 }

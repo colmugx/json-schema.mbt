@@ -4,10 +4,10 @@ A compile-once JSON Schema validator for MoonBit, built around **precise
 2020-12 validation scenarios** rather than permissive approximations.
 
 **Status: development milestone, not a complete 2020-12 implementation.**
-Local static JSON Pointer references are supported, including recursive plans.
-Remote references, resource identifiers, dynamic scope and unevaluated semantics
-are not implemented; schemas requesting those semantics fail compilation explicitly. See
-[the support contract](docs/conformance.md) before adopting the library.
+Static and dynamic references, resource identifiers and anchors, and
+`unevaluatedProperties`/`unevaluatedItems` are supported. Cross-resource references
+use an explicit preloaded registry: the compiler and validator never fetch URIs.
+Custom dialects and vocabulary negotiation remain outside the supported profile.
 
 ## Use it for
 
@@ -61,6 +61,45 @@ validation result.
   Failed speculative `anyOf`, `oneOf`, `not` and `if` branches do not leak errors
   into a successful result.
 
+### Preload referenced resources
+
+Pass external documents as a URI-to-schema map. `base_uri` is the root document's
+retrieval URI; `$id` establishes canonical resource identities and resolves
+relative references. An embedded `$id` starts a new resource, with its own anchors.
+Registry keys and `base_uri` must be absolute URIs; a relative `$id` requires an
+absolute base. Resource namespaces are registered when referenced, so unrelated
+legacy-dialect documents can coexist in the registry without being compiled.
+
+```mbt check
+///|
+test "preloaded resource references" {
+  let resources : Map[String, Json] = Map::from_array([
+    (
+      "https://example.com/schemas/positive",
+      { "type": "integer", "minimum": 1 },
+    ),
+  ])
+  let schema = @json-schema.Schema::compile(
+    { "$ref": "positive" },
+    base_uri="https://example.com/schemas/request",
+    resources~,
+  )
+  assert_true(schema.valid(Json::number(2)))
+  assert_false(schema.valid(Json::number(0)))
+}
+```
+
+Missing resources or anchors and conflicting identities are compile errors,
+not network requests or ignored constraints. The compiled schema owns its plan;
+mutating the registry or source documents afterwards does not change validation.
+`$dynamicRef` uses the evaluation's dynamic resource scope rather than always
+following a fixed target. `unevaluated*` observes successful evaluation marks,
+including marks from references and all successful `anyOf` branches.
+
+Faults retain document-relative `schema_path` JSON Pointers. `schema_uri`, when
+available, identifies the source document containing that pointer, so failures
+from different documents can be distinguished without changing pointer syntax.
+
 ### Preserve number precision
 
 A floating-point value cannot recover digits lost before validation. This
@@ -85,8 +124,10 @@ representations are checked, not silently discarded.
 The compiler/evaluator covers boolean schemas, `type`, `const`, `enum`, numeric
 bounds and `multipleOf`, string lengths and patterns, object properties/names/
 dependencies, 2020-12 `prefixItems`/`items`, array counts/`contains`/`uniqueItems`,
-`allOf`/`anyOf`/`oneOf`/`not`/`if`/`then`/`else`, and same-document static
-`$ref` (including `$defs`, forward references and recursive schemas).
+`allOf`/`anyOf`/`oneOf`/`not`/`if`/`then`/`else`, static `$ref` (including
+`$defs`, forward references, recursive schemas and preloaded external resources),
+`$id`, `$anchor`, `$dynamicAnchor`/`$dynamicRef`, and
+`unevaluatedProperties`/`unevaluatedItems`.
 
 Patterns use `moonbitlang/regexp@0.3.6` with a small explicit compatibility layer.
 The adapter preserves ECMA shorthand,
@@ -102,11 +143,16 @@ unsupported error, not an ignored assertion.
 
 ## Evidence and development
 
-The full pinned official draft2020-12 corpus currently reports **962/1301**
-standard cases matched: **0 mismatches, 337 unsupported, 2 rejected**. Optional
-cases are reported separately (**535/1036**); format assertions are not enabled.
+The full pinned official draft2020-12 corpus reports **1292/1301** standard
+cases matched: **0 mismatches, 0 unsupported, 9 rejected**. The remaining
+rejections involve unprovided official metaschema resources and custom dialects/
+vocabularies. Targeted files match **31/31** remote-reference, **8/8** anchor,
+**44/44** dynamic-reference, **129/129** unevaluated-property and **71/71**
+unevaluated-item cases. Optional cases are separate: **547/1036** matched,
+**480 mismatches, 4 unsupported, 5 rejected**; format assertions are not enabled.
 This is visible progress toward conformance, **not a complete-draft claim**.
-Unsupported and rejected cases stay in the denominator.
+Unsupported and rejected cases stay in the denominator. Results use the pin in
+`benchmarks/suite.json` and are recorded in `benchmark-results/conformance.json`.
 
 Run these commands from this independent module's root:
 

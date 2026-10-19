@@ -88,6 +88,25 @@ fn safe_relative(path : String) -> Bool {
 }
 
 ///|
+fn remote_entries(
+  manifest : Map[String, Json],
+) -> Array[(String, String)] raise {
+  let seen : Set[String] = Set([])
+  let entries : Array[(String, String)] = []
+  for entry in array(manifest, "remotes") {
+    let fields = object(entry)
+    let uri = text(fields, "uri")
+    let path = text(fields, "path")
+    guard !uri.is_empty() && !seen.contains(uri) && safe_relative(path) else {
+      fail("invalid or duplicate remote mapping: " + uri)
+    }
+    seen.add(uri)
+    entries.push((uri, path))
+  }
+  entries
+}
+
+///|
 fn compile_status(error : @schema.CompileError) -> String {
   match error {
     @schema.CompileError::UnsupportedKeyword(..)

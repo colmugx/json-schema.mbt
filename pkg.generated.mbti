@@ -68,6 +68,7 @@ pub(all) struct Fault {
   schema_path : String
   keyword : String
   message : String
+  schema_uri : String?
 } derive(Eq, @debug.Debug)
 pub fn Fault::equal(Self, Self) -> Bool
 pub fn Fault::not_equal(Self, Self) -> Bool
@@ -81,7 +82,7 @@ pub(all) enum PatternSupport {
 pub struct Schema {
   // private fields
 }
-pub fn Schema::compile(Json, max_depth? : Int) -> Self raise CompileError
+pub fn Schema::compile(Json, base_uri? : String, resources? : Map[String, Json], max_depth? : Int) -> Self raise CompileError
 pub fn Schema::faults(Self, Json, max_depth? : Int) -> Array[Fault] raise
 pub fn Schema::valid(Self, Json, max_depth? : Int) -> Bool raise
 

@@ -63,13 +63,15 @@ fn batch(
   let mut accepted = 0
   for group in workload.groups {
     if mode == "compile" {
-      sink.keep(@schema.Schema::compile(group.document))
+      sink.keep(
+        @schema.Schema::compile(group.document, resources=group.resources),
+      )
       operations += 1
       accepted += 1
       continue
     }
     let compiled = if mode == "compile_validate" {
-      @schema.Schema::compile(group.document)
+      @schema.Schema::compile(group.document, resources=group.resources)
     } else {
       group.compiled
     }

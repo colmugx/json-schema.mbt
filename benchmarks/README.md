@@ -97,7 +97,12 @@ Indices are zero-based. Case IDs are `file.json#group/case`. A filtered run
 writes `conformance-filtered.json` by default so it does not overwrite the full
 campaign evidence. `--manifest PATH` and `--output PATH` override defaults.
 Missing input, malformed fixtures/manifest, duplicate or unsafe paths, incorrect
-counts and an empty selection are harness errors, not skipped tests.
+counts and an empty selection are harness errors, not skipped tests. Both the
+conformance runner and official performance workloads preload the manifest's
+`remotes` URI/file mappings into the compiler's resource registry. No HTTP server
+or implicit network fetching is used; missing or malformed remote files are
+harness errors. File loading/parsing is outside the measurement clocks; resource
+indexing during schema compilation remains part of compile timing.
 
 | Native runner exit | Meaning | Campaign / CI policy |
 |---|---|---|

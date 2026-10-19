@@ -14,11 +14,16 @@ pub(all) suberror EvaluationError {
 } derive(Debug)
 
 ///|
+/// One assertion failure. `schema_path` is a JSON Pointer relative to the
+/// schema document that owns the failing schema; `schema_uri` identifies that
+/// document (`None` when the document was supplied without any URI), so
+/// `schema_uri + "#" + schema_path` dereferences the failing position.
 pub(all) struct Fault {
   instance_path : String
   schema_path : String
   keyword : String
   message : String
+  schema_uri : String?
 } derive(Debug, Eq)
 
 ///|

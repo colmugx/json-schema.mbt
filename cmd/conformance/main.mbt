@@ -58,6 +58,11 @@ fn execute(options : Options) -> Int32 raise {
   guard count(manifest, "version") == 1 else {
     fail("unsupported manifest version")
   }
+  let resources : Map[String, Json] = Map([])
+  for entry in remote_entries(manifest) {
+    let (uri, path) = entry
+    resources[uri] = @schema.parse(@fs.read_file_to_string(path))
+  }
   let revision = text(manifest, "revision")
   let root = text(manifest, "suite_root")
   let files = array(manifest, "files")
@@ -116,7 +121,7 @@ fn execute(options : Options) -> Int32 raise {
         continue
       }
       let compiled : Result[@schema.Schema, @schema.CompileError] = Ok(
-        @schema.Schema::compile(document),
+        @schema.Schema::compile(document, resources~),
       ) catch {
         error => Err(error)
       }

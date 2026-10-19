@@ -1,3 +1,4 @@
+///|
 import {
   "moonbitlang/async@0.21.3",
   "moonbitlang/async@0.21.3/process",
@@ -6,43 +7,141 @@ import {
   "moonbitlang/x@0.5.5/fs",
 }
 
+///|
 fn remove_probe(path : String) -> Unit raise {
   if @fs.is_dir(path) {
-    for name in @fs.read_dir(path) { remove_probe(path + "/" + name) }
+    for name in @fs.read_dir(path) {
+      remove_probe(path + "/" + name)
+    }
     @fs.remove_dir(path)
-  } else { @fs.remove_file(path) }
+  } else {
+    @fs.remove_file(path)
+  }
 }
 
 // Exercise infrastructure failures separately from ordinary conformance gaps.
 // Probe files are isolated and removed; stdout/stderr remain in campaign logs.
+
+///|
 async fn main {
   let directory = "benchmark-results/harness-probes"
-  guard !@fs.path_exists(directory) else { fail("stale harness probe directory") }
+  guard !@fs.path_exists(directory) else {
+    fail("stale harness probe directory")
+  }
   @fs.create_dir(directory)
   defer remove_probe(directory)
-  let conformance = ["run", "cmd/conformance", "--target", "native", "--release", "--output-json", "--"]
-  let missing = @shell.Cmd("moon", conformance + ["--manifest", directory + "/missing.json"]).status(timeout_ms=30000)
+  let conformance = [
+    "run", "cmd/conformance", "--target", "native", "--release", "--output-json",
+    "--",
+  ]
+  let missing = @shell.Cmd(
+    "moon",
+    conformance + ["--manifest", directory + "/missing.json"],
+  ).status(timeout_ms=30000)
   guard missing == 2 else { fail("missing input was not a harness failure") }
-  let filtered = @shell.Cmd("moon", conformance + ["--file", "no-such-fixture.json", "--output", directory + "/filtered.json"]).status(timeout_ms=30000)
-  guard filtered == 2 && !@fs.path_exists(directory + "/filtered.json") else { fail("empty selection was not a harness failure") }
-  guard @json.parse(@fs.read_file_to_string("benchmark-results/manifest.json")) is Object(manifest) && manifest.get("totals") is Some(Object(totals)) else { fail("manifest missing") }
+  let filtered = @shell.Cmd(
+    "moon",
+    conformance +
+    ["--file", "no-such-fixture.json", "--output", directory + "/filtered.json"],
+  ).status(timeout_ms=30000)
+  guard filtered == 2 && !@fs.path_exists(directory + "/filtered.json") else {
+    fail("empty selection was not a harness failure")
+  }
+  guard @json.parse(@fs.read_file_to_string("benchmark-results/manifest.json"))
+    is Object(manifest) &&
+    manifest.get("totals") is Some(Object(totals)) else {
+    fail("manifest missing")
+  }
+  guard manifest.get("remotes") is Some(remotes) else {
+    fail("remote mappings missing")
+  }
+  for kind in ["missing", "malformed"] {
+    let path = directory + "/" + kind + "-remote.json"
+    if kind == "malformed" {
+      @fs.write_string_to_file(path, "{invalid json")
+    }
+    manifest["remotes"] = [{ "uri": "urn:harness:remote", "path": path }]
+    let probe_manifest = directory + "/" + kind + "-remote-manifest.json"
+    let probe_output = directory + "/" + kind + "-remote-result.json"
+    @fs.write_string_to_file(probe_manifest, Json::object(manifest).stringify())
+    let status = @shell.Cmd(
+      "moon",
+      conformance + ["--manifest", probe_manifest, "--output", probe_output],
+    ).status(timeout_ms=30000)
+    guard status == 2 && !@fs.path_exists(probe_output) else {
+      fail(kind + " remote was not a harness failure")
+    }
+  }
+  manifest["remotes"] = remotes
   totals["standard"] = Json::number(1302)
-  @fs.write_string_to_file(directory + "/wrong-count.json", Json::object(manifest).stringify())
-  let corrupted = @shell.Cmd("moon", conformance + ["--manifest", directory + "/wrong-count.json", "--output", directory + "/corrupted.json"]).status(timeout_ms=30000)
-  guard corrupted == 2 && !@fs.path_exists(directory + "/corrupted.json") else { fail("corrupt denominator was not a harness failure") }
-  let benchmark = @shell.Cmd("moon", ["run", "cmd/benchmark", "--target", "native", "--release", "--output-json", "--", "--scenario", "no-such-scenario", "--smoke", "--output", directory + "/measurement.json"]).status(timeout_ms=30000)
-  guard benchmark == 2 && !@fs.path_exists(directory + "/measurement.json") else { fail("invalid benchmark was not a harness failure") }
-  let wasm = @shell.Cmd("moonx", ["benchmark-results/measurement.mbtx", "--scenario", "no-such-scenario", "--smoke", "--output", directory + "/wasm.json"]).status(timeout_ms=60000)
-  guard wasm == 2 && !@fs.path_exists(directory + "/wasm.json") else { fail("invalid moonx benchmark was not a harness failure") }
+  @fs.write_string_to_file(
+    directory + "/wrong-count.json",
+    Json::object(manifest).stringify(),
+  )
+  let corrupted = @shell.Cmd(
+    "moon",
+    conformance +
+    [
+      "--manifest",
+      directory + "/wrong-count.json",
+      "--output",
+      directory + "/corrupted.json",
+    ],
+  ).status(timeout_ms=30000)
+  guard corrupted == 2 && !@fs.path_exists(directory + "/corrupted.json") else {
+    fail("corrupt denominator was not a harness failure")
+  }
+  let benchmark = @shell.Cmd("moon", [
+    "run",
+    "cmd/benchmark",
+    "--target",
+    "native",
+    "--release",
+    "--output-json",
+    "--",
+    "--scenario",
+    "no-such-scenario",
+    "--smoke",
+    "--output",
+    directory + "/measurement.json",
+  ]).status(timeout_ms=30000)
+  guard benchmark == 2 && !@fs.path_exists(directory + "/measurement.json") else {
+    fail("invalid benchmark was not a harness failure")
+  }
+  let wasm = @shell.Cmd("moonx", [
+    "benchmark-results/measurement.mbtx",
+    "--scenario",
+    "no-such-scenario",
+    "--smoke",
+    "--output",
+    directory + "/wasm.json",
+  ]).status(timeout_ms=60000)
+  guard wasm == 2 && !@fs.path_exists(directory + "/wasm.json") else {
+    fail("invalid moonx benchmark was not a harness failure")
+  }
   let timed_out = try {
-    ignore(@async.with_timeout(20, () => @process.run("sleep", ["10"], cancel_handler=@process.hard_cancel())))
+    ignore(
+      @async.with_timeout(20, () => {
+        @process.run("sleep", ["10"], cancel_handler=@process.hard_cancel())
+      }),
+    )
     false
-  } catch { @async.TimeoutError => true; error => raise error }
+  } catch {
+    @async.TimeoutError => true
+    error => raise error
+  }
   guard timed_out else { fail("timeout unexpectedly succeeded") }
   // Only the official runner may use exit 1 for coverage gaps. All other
   // child commands, including compilation, require zero in the campaign.
-  @fs.write_string_to_file(directory + "/invalid.mbtx", "fn main { this is invalid MoonBit }\n")
-  let compile = @shell.Cmd("moonx", [directory + "/invalid.mbtx"]).status(timeout_ms=30000)
+  @fs.write_string_to_file(
+    directory + "/invalid.mbtx",
+    "fn main { this is invalid MoonBit }\n",
+  )
+  let compile = @shell.Cmd("moonx", [directory + "/invalid.mbtx"]).status(
+    timeout_ms=30000,
+  )
   guard compile != 0 else { fail("invalid program unexpectedly compiled") }
-  println("harness failure probes passed: input, filter, denominator, benchmark, timeout and compiler")
+  println(
+    "harness failure probes passed: input, filter, missing/malformed remotes, denominator, benchmark, timeout and compiler",
+  )
 }

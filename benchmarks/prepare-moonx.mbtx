@@ -65,12 +65,9 @@ fn main raise {
     guard !contents.contains("#cfg") && !contents.contains("extern \"c\"") else {
       fail("target-specific library source cannot be bundled: " + file)
     }
-    let bundled = if file == "validate.mbt" {
-      // Avoid colliding with the runner's builtin fail; rename no behavior.
-      contents.replace_all(old="fail(", new="schema_fault(")
-    } else {
-      contents
-    }
+    // The library's private diagnostic helper spans evaluator source files;
+    // rename its definition and calls without touching the runner's builtin fail.
+    let bundled = contents.replace_all(old="fail(", new="schema_fault(")
     source <+ "// Source: \{file}\n\{bundled}\n"
     evidence.push({ "path": file, "source": contents })
   }
@@ -95,7 +92,7 @@ fn main raise {
         "runtime": "moonx-wasm",
         "source_layout": "standalone bundle; native uses separate library/runner packages",
         "transformations": [
-          "remove benchmark @schema namespace", "rename private validate.fail to schema_fault to avoid builtin collision",
+          "remove benchmark @schema namespace", "rename private library fail and its calls to schema_fault to avoid builtin collision",
           "replace execution identity only",
         ],
         "module": module_text,

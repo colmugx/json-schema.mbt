@@ -8,6 +8,7 @@ struct Instance {
 ///|
 struct Group {
   document : Json
+  resources : Map[String, Json]
   compiled : @schema.Schema
   instances : Array[Instance]
 }
@@ -58,6 +59,26 @@ fn official(manifest_path : String, result_path : String) -> Workload raise {
     manifest.get("totals") is Some(Object(totals)) &&
     manifest.get("files") is Some(Array(files)) else {
     fail("missing corpus evidence")
+  }
+  guard manifest.get("remotes") is Some(Array(remotes)) else {
+    fail("missing remote mappings")
+  }
+  let resources : Map[String, Json] = Map([])
+  for entry in remotes {
+    let fields = object(entry)
+    let uri = text(fields, "uri")
+    let path = text(fields, "path")
+    guard !uri.is_empty() &&
+      !resources.contains(uri) &&
+      !path.is_empty() &&
+      !path.has_prefix("/") &&
+      !path.contains("\\") &&
+      !path
+      .split("/")
+      .any(part => part == ".." || part == "." || part.is_empty()) else {
+      fail("invalid or duplicate remote mapping")
+    }
+    resources[uri] = @schema.parse(@fs.read_file_to_string(path))
   }
   let allowed : Set[String] = Set([])
   let mut standard_total = 0
@@ -126,7 +147,8 @@ fn official(manifest_path : String, result_path : String) -> Workload raise {
       }
       groups.push({
         document,
-        compiled: @schema.Schema::compile(document),
+        resources,
+        compiled: @schema.Schema::compile(document, resources~),
         instances,
       })
     }
@@ -149,7 +171,12 @@ fn fixed_group(
   })
   {
     groups: [
-      { document, compiled: @schema.Schema::compile(document), instances, },
+      {
+        document,
+        resources: Map([]),
+        compiled: @schema.Schema::compile(document),
+        instances,
+      },
     ],
     ids: instances.map(value => value.id),
     excluded: 0,

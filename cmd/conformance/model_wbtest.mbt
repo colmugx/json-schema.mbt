@@ -18,6 +18,40 @@ test "runner: every instance has one status and remains in denominator" {
 }
 
 ///|
+test "runner: remote mappings are distinct and workspace relative" {
+  let entries = remote_entries({
+    "remotes": [
+      { "uri": "http://localhost:1234/tree", "path": "suite/remotes/tree" },
+      { "uri": "urn:example:node", "path": "suite/remotes/node.json" },
+    ],
+  })
+  assert_eq(entries.length(), 2)
+  assert_eq(entries[0], ("http://localhost:1234/tree", "suite/remotes/tree"))
+  assert_eq(remote_entries({ "remotes": [] }).length(), 0)
+  for
+    manifest in [
+      ({} : Json),
+      { "remotes": {} },
+      { "remotes": [{ "uri": "", "path": "suite/tree" }] },
+      { "remotes": [{ "uri": "urn:node", "path": "../tree" }] },
+      { "remotes": [{ "uri": "urn:node", "path": "/tree" }] },
+      { "remotes": [{ "uri": "urn:node" }] },
+      {
+        "remotes": [
+          { "uri": "urn:node", "path": "suite/a" },
+          { "uri": "urn:node", "path": "suite/b" },
+        ],
+      },
+    ] {
+    try remote_entries(object(manifest)) catch {
+      _ => ()
+    } noraise {
+      _ => fail("invalid remote manifest must fail")
+    }
+  }
+}
+
+///|
 test "runner: filters cannot overwrite the default complete report" {
   let selection = options([
     "runner", "--file", "type.json", "--group", "0", "--case", "1",

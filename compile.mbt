@@ -1,45 +1,91 @@
 ///|
-/// Compile a schema once. Unknown extension keywords are annotations; known
-/// malformed keywords fail compilation. Local static `$ref` targets compile
-/// into an indexed arena; unevaluated and cross-resource semantics stay
-/// explicitly refused until their evaluation semantics are implemented.
+/// Compile a schema once, optionally together with a registry of further
+/// schema documents (`resources`, keyed by the URI each document was supplied
+/// under) and the document's own `base_uri`. Reference resolution follows
+/// RFC 3986 against `$id`-established resource identities; the registry is
+/// consulted in memory only — compilation never performs I/O. Unknown
+/// extension keywords are annotations; known malformed keywords, unresolvable
+/// references, unknown anchors and duplicate identities fail compilation.
+/// The returned schema owns its plan: later mutations to the documents or to
+/// the registry map are not observed.
 pub fn Schema::compile(
   document : Json,
+  base_uri? : String,
+  resources? : Map[String, Json],
   max_depth~ : Int32 = 128,
 ) -> Schema raise CompileError {
   if max_depth < 1 {
     raise CompileError::DepthLimit(max_depth)
   }
   check_schema_json(document, "", 0, max_depth)
-  let index = index_document(document, max_depth)
-  ignore(compile_into(index, document, "", 0, max_depth))
-  { plan: { nodes: index.nodes, }, }
+  match resources {
+    Some(entries) =>
+      for _, entry in entries {
+        check_schema_json(entry, "", 0, max_depth)
+      }
+    None => ()
+  }
+  let index = index_program(document, base_uri, resources, max_depth)
+  ignore(compile_into(index, 0, 0, document, "", 0, max_depth))
+  // A dynamic target may live under an otherwise inactive applicator (for
+  // example `then` without `if`). No runtime jump may reach an uncompiled slot.
+  while true {
+    let pending : Array[Int32] = []
+    for resource in index.resources {
+      for _, slot in resource.dynamic_anchors {
+        if !index.visited[slot] {
+          pending.push(slot)
+        }
+      }
+    }
+    if pending.is_empty() {
+      break
+    }
+    for slot in pending {
+      ensure_compiled(index, slot, max_depth)
+    }
+  }
+  {
+    plan: {
+      nodes: index.nodes,
+      resources: index.resources,
+      collect_evaluated: index.collect_evaluated,
+    },
+  }
 }
 
 ///|
-// Compile one schema position and store its plan in the arena, so `$ref`
-// rules can jump to it. The structural walk visits every keyword-owned
-// position once; lazily referenced positions compile through the same entry
-// point. Raising the visited flag on entry marks the active compile chain,
-// which keeps recursive targets finite, and refs stay indexed instead of
-// inlined.
+// Compile one schema position and store its `Located` plan in the arena, so
+// `$ref` and `$dynamicRef` rules can jump to it. The structural walk visits
+// every keyword-owned position once; lazily referenced positions compile
+// through the same entry point. Raising the visited flag on entry marks the
+// active compile chain, which keeps recursive targets finite, and refs stay
+// indexed instead of inlined.
 fn compile_into(
   index : RefIndex,
+  doc : Int32,
+  resource : Int32,
   document : Json,
   path : String,
   depth : Int32,
   limit : Int32,
 ) -> Plan raise CompileError {
-  if index.slots.contains(path) {
-    index.visited[index.slots[path]] = true
+  let slots = index.docs[doc].slots
+  let resource = match slots.get(path) {
+    Some(slot) => {
+      let actual = ensure_slot_resource(index, slot, limit)
+      index.visited[slot] = true
+      actual
+    }
+    None => resource
   }
-  let plan = compile_node(index, document, path, depth, limit)
-  if index.slots.contains(path) {
-    let slot = index.slots[path]
-    index.nodes[slot] = plan
+  let plan = compile_node(index, doc, resource, document, path, depth, limit)
+  if slots.contains(path) {
+    let slot = slots[path]
+    index.nodes[slot] = Located(resource, plan)
     index.visited[slot] = true
   }
-  plan
+  Located(resource, plan)
 }
 
 ///|
@@ -188,6 +234,8 @@ fn compile_type(value : Json, path : String) -> ValueType raise CompileError {
 ///|
 fn optional_node(
   index : RefIndex,
+  doc : Int32,
+  resource : Int32,
   fields : Map[String, Json],
   key : String,
   path : String,
@@ -197,13 +245,23 @@ fn optional_node(
   fields
   .get(key)
   .map(value => {
-    compile_into(index, value, pointer_step(path, key), depth + 1, limit)
+    compile_into(
+      index,
+      doc,
+      resource,
+      value,
+      pointer_step(path, key),
+      depth + 1,
+      limit,
+    )
   })
 }
 
 ///|
 fn compile_branches(
   index : RefIndex,
+  doc : Int32,
+  resource : Int32,
   value : Json,
   path : String,
   depth : Int32,
@@ -216,6 +274,8 @@ fn compile_branches(
   branches.mapi((position, schema) => {
     compile_into(
       index,
+      doc,
+      resource,
       schema,
       pointer_step(path, position.to_string()),
       depth + 1,
@@ -244,6 +304,8 @@ fn compile_pattern_at(
 ///|
 fn compile_node(
   index : RefIndex,
+  doc : Int32,
+  resource : Int32,
   document : Json,
   path : String,
   depth : Int32,
@@ -263,6 +325,10 @@ fn compile_node(
   }
   guard document is Object(fields) else { return Accept }
   let rules : Array[Rule] = []
+  // `unevaluated*` assertions must observe every other keyword's evaluation,
+  // so their rules compile like the rest but append after all of them.
+  let mut unevaluated_properties : (Plan, String)? = None
+  let mut unevaluated_items : (Plan, String)? = None
   for key, value in fields {
     let location = pointer_step(path, key)
     match key {
@@ -280,16 +346,58 @@ fn compile_node(
           invalid_keyword(location, "expected a reference URI string")
           continue
         }
-        rules.push(Ref(resolve_ref(index, reference, location, limit)))
+        rules.push(
+          Ref(resolve_ref(index, resource, reference, location, limit)),
+        )
       }
-      "$dynamicRef"
-      | "$id"
-      | "$anchor"
-      | "$dynamicAnchor"
-      | "$vocabulary"
-      | "unevaluatedProperties"
-      | "unevaluatedItems" =>
-        raise UnsupportedKeyword(path=location, keyword=key)
+      "$dynamicRef" => {
+        guard value is String(reference) else {
+          invalid_keyword(location, "expected a reference URI string")
+          continue
+        }
+        let (slot, name) = resolve_dynamic_ref(
+          index, resource, reference, location, limit,
+        )
+        rules.push(DynamicRef(slot, name))
+      }
+      // Resource identity keywords were validated and registered by the
+      // resource scan (`scan_resource`) before compilation started.
+      "$id" | "$anchor" | "$dynamicAnchor" => ()
+      "$vocabulary" => raise UnsupportedKeyword(path=location, keyword=key)
+      "unevaluatedProperties" => {
+        index.collect_evaluated = true
+        unevaluated_properties = Some(
+          (
+            compile_into(
+              index,
+              doc,
+              resource,
+              value,
+              location,
+              depth + 1,
+              limit,
+            ),
+            location,
+          ),
+        )
+      }
+      "unevaluatedItems" => {
+        index.collect_evaluated = true
+        unevaluated_items = Some(
+          (
+            compile_into(
+              index,
+              doc,
+              resource,
+              value,
+              location,
+              depth + 1,
+              limit,
+            ),
+            location,
+          ),
+        )
+      }
       "$defs" => {
         guard value is Object(definitions) else {
           invalid_keyword(location, "expected a map of schemas")
@@ -299,6 +407,8 @@ fn compile_node(
           ignore(
             compile_into(
               index,
+              doc,
+              resource,
               schema,
               pointer_step(location, name),
               depth + 1,
@@ -364,20 +474,43 @@ fn compile_node(
         rules.push(Pattern(compile_pattern_at(value, location), location))
       "allOf" =>
         rules.push(
-          All(compile_branches(index, value, location, depth, limit), location),
+          All(
+            compile_branches(
+              index, doc, resource, value, location, depth, limit,
+            ),
+            location,
+          ),
         )
       "anyOf" =>
         rules.push(
-          Any(compile_branches(index, value, location, depth, limit), location),
+          Any(
+            compile_branches(
+              index, doc, resource, value, location, depth, limit,
+            ),
+            location,
+          ),
         )
       "oneOf" =>
         rules.push(
-          One(compile_branches(index, value, location, depth, limit), location),
+          One(
+            compile_branches(
+              index, doc, resource, value, location, depth, limit,
+            ),
+            location,
+          ),
         )
       "not" =>
         rules.push(
           Negate(
-            compile_into(index, value, location, depth + 1, limit),
+            compile_into(
+              index,
+              doc,
+              resource,
+              value,
+              location,
+              depth + 1,
+              limit,
+            ),
             location,
           ),
         )
@@ -399,7 +532,9 @@ fn compile_node(
           invalid_keyword(location, "expected an array annotation")
         }
       "contentSchema" =>
-        ignore(compile_into(index, value, location, depth + 1, limit))
+        ignore(
+          compile_into(index, doc, resource, value, location, depth + 1, limit),
+        )
       _ => ()
     }
   }
@@ -410,9 +545,15 @@ fn compile_node(
   }
   // Compile conditional arms even when `if` is absent: their shapes must
   // still be legal, although their validation effects are then ignored.
-  let condition = optional_node(index, fields, "if", path, depth, limit)
-  let consequent = optional_node(index, fields, "then", path, depth, limit)
-  let alternate = optional_node(index, fields, "else", path, depth, limit)
+  let condition = optional_node(
+    index, doc, resource, fields, "if", path, depth, limit,
+  )
+  let consequent = optional_node(
+    index, doc, resource, fields, "then", path, depth, limit,
+  )
+  let alternate = optional_node(
+    index, doc, resource, fields, "else", path, depth, limit,
+  )
   if condition is Some(predicate) {
     rules.push(Conditional(predicate, consequent, alternate))
   }
@@ -430,6 +571,8 @@ fn compile_node(
         name,
         compile_into(
           index,
+          doc,
+          resource,
           schema,
           pointer_step(pointer_step(path, "properties"), name),
           depth + 1,
@@ -455,7 +598,7 @@ fn compile_node(
       patterns.push(
         (
           compile_pattern_at(Json::string(expression), location),
-          compile_into(index, schema, location, depth + 1, limit),
+          compile_into(index, doc, resource, schema, location, depth + 1, limit),
         ),
       )
     }
@@ -494,6 +637,8 @@ fn compile_node(
           name,
           compile_into(
             index,
+            doc,
+            resource,
             schema,
             pointer_step(pointer_step(path, "dependentSchemas"), name),
             depth + 1,
@@ -511,9 +656,11 @@ fn compile_node(
     dependent_required,
     dependent_schemas,
     additional: optional_node(
-      index, fields, "additionalProperties", path, depth, limit,
+      index, doc, resource, fields, "additionalProperties", path, depth, limit,
     ),
-    names: optional_node(index, fields, "propertyNames", path, depth, limit),
+    names: optional_node(
+      index, doc, resource, fields, "propertyNames", path, depth, limit,
+    ),
     minimum: compile_count(fields, "minProperties", path),
     maximum: compile_count(fields, "maxProperties", path),
   }
@@ -528,6 +675,8 @@ fn compile_node(
     Some(value) =>
       compile_branches(
         index,
+        doc,
+        resource,
         value,
         pointer_step(path, "prefixItems"),
         depth,
@@ -546,8 +695,12 @@ fn compile_node(
     path,
     prefix,
     unique,
-    items: optional_node(index, fields, "items", path, depth, limit),
-    contains: optional_node(index, fields, "contains", path, depth, limit),
+    items: optional_node(
+      index, doc, resource, fields, "items", path, depth, limit,
+    ),
+    contains: optional_node(
+      index, doc, resource, fields, "contains", path, depth, limit,
+    ),
     min_contains: compile_count(fields, "minContains", path).unwrap_or(1),
     max_contains: compile_count(fields, "maxContains", path),
     minimum: compile_count(fields, "minItems", path),
@@ -558,6 +711,12 @@ fn compile_node(
       "maxItems", "uniqueItems",
     ].any(key => fields.contains(key)) {
     rules.push(Arrays(array_plan))
+  }
+  if unevaluated_properties is Some((plan, location)) {
+    rules.push(UnevaluatedProperties(plan, location))
+  }
+  if unevaluated_items is Some((plan, location)) {
+    rules.push(UnevaluatedItems(plan, location))
   }
   Rules(rules)
 }

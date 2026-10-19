@@ -10,10 +10,17 @@ priv enum ValueType {
 }
 
 ///|
+/// `Located` wraps every compiled schema node with the index of the schema
+/// resource it belongs to. The arena (`Program.nodes`) stores `Located`
+/// nodes, so evaluation can always recover the resource identity — and from
+/// it the source document URI — of the plan it is standing in. Nested plans
+/// (branches, property schemas, ref targets) are `Located` too.
 priv enum Plan {
+  Pending
   Accept
   Reject(String)
   Rules(Array[Rule])
+  Located(Int32, Plan)
 }
 
 ///|
@@ -34,6 +41,14 @@ priv enum Rule {
   Negate(Plan, String)
   Conditional(Plan, Plan?, Plan?)
   Ref(Int32)
+  /// `$dynamicRef`: the arena slot is the initially resolved target; the name
+  /// is present only when that target actually carries a `$dynamicAnchor`
+  /// (otherwise the reference behaves exactly like `Ref`).
+  DynamicRef(Int32, String?)
+  /// Compiled last within a node so the evaluator can run them as a final
+  /// pass over the annotations collected by every earlier keyword.
+  UnevaluatedProperties(Plan, String)
+  UnevaluatedItems(Plan, String)
 }
 
 ///|
@@ -64,16 +79,37 @@ priv struct ArrayPlan {
 }
 
 ///|
+/// Metadata for one schema resource (a `$id`-identified subtree or a whole
+/// source document). `uri` is the resource identity: the canonical URI the
+/// resource calls itself (`None` only for an anonymous root document).
+/// `document_uri` identifies the source document the resource was supplied
+/// in, so a schema pointer (which is relative to that document) can be made
+/// absolute by appending it to `document_uri`. `dynamic_anchors` maps
+/// `$dynamicAnchor` names to arena slots for `$dynamicRef` bookending.
+priv struct ResourceMeta {
+  uri : String?
+  document_uri : String?
+  dynamic_anchors : Map[String, Int32]
+}
+
+///|
 /// An owned indexed node graph: `$ref` rules jump to arena slots instead of
 /// inlining targets, so recursive schemas compile once and validation never
-/// builds cyclic heap references or expands plans exponentially.
+/// builds cyclic heap references or expands plans exponentially. `resources`
+/// describes every schema resource the plan spans; `collect_evaluated` is
+/// true when a compiled node uses `unevaluatedProperties`/`unevaluatedItems`
+/// and the evaluator must track evaluated-instance annotations.
 priv struct Program {
   nodes : Array[Plan]
+  resources : Array[ResourceMeta]
+  collect_evaluated : Bool
 }
 
 ///|
 /// An owned, precompiled 2020-12 validation plan. Compilation does not mutate
 /// the source document; constants and enumerations are copied into the plan.
+/// After compilation the schema depends only on the plan: later mutations to
+/// the documents or the registry map are not observed.
 pub struct Schema {
   priv plan : Program
 }

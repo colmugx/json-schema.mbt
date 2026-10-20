@@ -9,7 +9,7 @@ import {
 // Values
 pub fn compile_pattern(String) -> PatternSupport
 
-pub fn parse(StringView, max_nesting_depth? : Int) -> Json raise ParseError
+pub fn parse(StringView, max_nesting_depth? : Int32) -> Json raise ParseError
 
 pub fn pattern_matches(PatternSupport, String) -> Bool raise PatternError
 
@@ -20,12 +20,12 @@ pub(all) suberror CompileError {
   UnsupportedVocabulary(dialect~ : String, vocabulary~ : String)
   UnsupportedKeyword(path~ : String, keyword~ : String)
   UnsupportedPattern(path~ : String, pattern~ : String, reason~ : String)
-  DepthLimit(Int)
+  DepthLimit(Int32)
 } derive(@debug.Debug)
 pub fn CompileError::to_repr(Self) -> @debug.Repr
 
 pub(all) suberror EvaluationError {
-  DepthLimit(Int)
+  DepthLimit(Int32)
   InvalidNumber(path~ : String)
 } derive(@debug.Debug)
 pub fn EvaluationError::to_repr(Self) -> @debug.Repr
@@ -36,8 +36,8 @@ pub(all) suberror NumericError {
 pub fn NumericError::to_repr(Self) -> @debug.Repr
 
 pub(all) suberror ParseError {
-  InvalidJson(position~ : Int, reason~ : String)
-  DepthLimit(Int)
+  InvalidJson(position~ : Int32, reason~ : String)
+  DepthLimit(Int32)
 } derive(@debug.Debug)
 pub fn ParseError::to_repr(Self) -> @debug.Repr
 
@@ -52,17 +52,17 @@ pub struct CompiledPattern {
 }
 
 pub enum ExactNumber {
-  Repr(coeff~ : @bigint.BigInt, scale~ : Int)
+  Repr(coeff~ : @bigint.BigInt, scale~ : Int32)
   Double(Double)
 }
-pub fn ExactNumber::compare(Self, Self) -> Int raise NumericError
+pub fn ExactNumber::compare(Self, Self) -> Int32 raise NumericError
 pub fn ExactNumber::equal(Self, Self) -> Bool raise NumericError
 pub fn ExactNumber::from_double(Double) -> Self
 pub fn ExactNumber::from_literal(String) -> Self?
 pub fn ExactNumber::is_integer(Self) -> Bool raise NumericError
 pub fn ExactNumber::multiple_of(Self, Self) -> Bool raise NumericError
 pub fn ExactNumber::of_json(Json) -> Self?
-pub fn ExactNumber::sign(Self) -> Int raise NumericError
+pub fn ExactNumber::sign(Self) -> Int32 raise NumericError
 
 pub(all) struct Fault {
   instance_path : String
@@ -83,9 +83,9 @@ pub(all) enum PatternSupport {
 pub struct Schema {
   // private fields
 }
-pub fn Schema::compile(Json, base_uri? : String, resources? : Map[String, Json], max_depth? : Int) -> Self raise CompileError
-pub fn Schema::faults(Self, Json, max_depth? : Int) -> Array[Fault] raise
-pub fn Schema::valid(Self, Json, max_depth? : Int) -> Bool raise
+pub fn Schema::compile(Json, base_uri? : String, resources? : Map[String, Json], max_depth? : Int32) -> Self raise CompileError
+pub fn Schema::faults(Self, Json, max_depth? : Int32) -> Array[Fault] raise
+pub fn Schema::valid(Self, Json, max_depth? : Int32) -> Bool raise
 
 // Type aliases
 

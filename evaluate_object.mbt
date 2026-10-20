@@ -57,7 +57,7 @@ fn evaluate_object(
   let mut patterns_valid = true
   let mut additional_valid = true
   for name, child in fields {
-    let child_path = pointer_step(path, name)
+    let child_path = if failures is None { "" } else { pointer_step(path, name) }
     let mut covered = false
     if plan.properties.get(name) is Some(schema) {
       covered = true

@@ -256,6 +256,55 @@ def main():
             records[scenario].append({"repetition": i + 1, "order": list(sequence),
                                       "baseline": costs["baseline"], "candidate": costs["candidate"]})
     emit_report(evidence, runtime, base_sha, sha, smoke, records, head_check["standard"])
+    if runtime == "native":
+        # Additional intra-candidate paired comparison. The legacy main checkout
+        # cannot know this new API, so compare two compilation modes within the
+        # candidate checkout, with identical documents and fresh process clocks.
+        registry_pairs = []
+        for iteration in range(1 if smoke else 5):
+            order = (
+                ("official_compile", "official_compile_registry")
+                if iteration % 2 == 0 else
+                ("official_compile_registry", "official_compile")
+            )
+            values = {}
+            samples = {}
+            for scenario in order:
+                sample, ns = measure(candidate, evidence, runtime, "registry-" + scenario,
+                                     scenario, iteration + 1, smoke)
+                values[scenario] = ns
+                samples[scenario] = sample
+            legacy, cached = samples["official_compile"], samples["official_compile_registry"]
+            for key in ("eligible_case_ids", "operations_per_batch", "accepted_per_batch",
+                        "eligible_schemas", "excluded_cases", "revision"):
+                require(legacy[key] == cached[key], f"registry comparison differs in {key}")
+            registry_pairs.append({
+                "order": list(order),
+                "legacy_ns": values["official_compile"],
+                "registry_ns": values["official_compile_registry"],
+                "ratio_pct": 100 * (values["official_compile_registry"] /
+                                    values["official_compile"] - 1),
+            })
+        median = statistics.median(item["ratio_pct"] for item in registry_pairs)
+        output = {"version": 1, "repetitions": len(registry_pairs),
+                  "cached_registry_preparation_excluded": True,
+                  "median_paired_pct": median, "pairs": registry_pairs}
+        (evidence / "registry-comparison.json").write_text(
+            json.dumps(output, indent=2) + "\n", encoding="utf-8")
+        report = ("\n## Registry reused compilation vs legacy compilation\n\n"
+                  f"Native same-runner median paired delta: {median:+.2f}% "
+                  "(negative means reuse is faster). "
+                  "Each candidate revision runs both implementations in "
+                  "alternating order; registry snapshot preparation occurs "
+                  "outside the timed loop, and must be amortized separately.\n")
+        with (evidence / "comparison.md").open("a", encoding="utf-8") as out:
+            out.write(report)
+        print(report, flush=True)
+        summary = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary:
+            with open(summary, "a", encoding="utf-8") as out:
+                out.write(report)
+
 
 
 if __name__ == "__main__":

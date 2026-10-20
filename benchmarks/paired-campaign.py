@@ -286,17 +286,34 @@ def main():
                                     values["official_compile"] - 1),
             })
         median = statistics.median(item["ratio_pct"] for item in registry_pairs)
-        output = {"version": 1, "repetitions": len(registry_pairs),
+        startup_costs = []
+        for iteration in range(1 if smoke else 5):
+            sample, ns = measure(candidate, evidence, runtime, "registry-preparation",
+                                 "official_registry_prepare", iteration + 1, smoke)
+            require(sample["mode"] == "registry_prepare", "incorrect registry cost measurement")
+            startup_costs.append(ns)
+        startup_ns = statistics.median(startup_costs)
+        saved_ns = statistics.median(p["legacy_ns"] - p["registry_ns"] for p in registry_pairs)
+        break_even = math.ceil(startup_ns / saved_ns) if saved_ns > 0 else None
+        output = {"version": 2, "repetitions": len(registry_pairs),
                   "cached_registry_preparation_excluded": True,
-                  "median_paired_pct": median, "pairs": registry_pairs}
+                  "median_paired_pct": median, "pairs": registry_pairs,
+                  "median_snapshot_preparation_ns": startup_ns,
+                  "snapshot_preparation_samples_ns": startup_costs,
+                  "median_saved_per_compilation_ns": saved_ns,
+                  "estimated_break_even_compilations": break_even}
         (evidence / "registry-comparison.json").write_text(
             json.dumps(output, indent=2) + "\n", encoding="utf-8")
         report = ("\n## Registry reused compilation vs legacy compilation\n\n"
                   f"Native same-runner median paired delta: {median:+.2f}% "
                   "(negative means reuse is faster). "
                   "Each candidate revision runs both implementations in "
-                  "alternating order; registry snapshot preparation occurs "
-                  "outside the timed loop, and must be amortized separately.\n")
+                  "alternating order. Registry creation is timed independently "
+                  "of reuse.\\n"
+                  f"Median one-time snapshot preparation: {startup_ns:,.0f} ns; "
+                  f"median saving per schema: {saved_ns:,.0f} ns; "
+                  f"estimated break-even: {break_even} schema compilations "
+                  "(single shared resource corpus, steady-state workloads).\\n")
         with (evidence / "comparison.md").open("a", encoding="utf-8") as out:
             out.write(report)
         print(report, flush=True)

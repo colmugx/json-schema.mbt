@@ -59,6 +59,12 @@ fn batch(
   mode : String,
   sink : @bench.Bench,
 ) -> (Int32, Int32) raise {
+  // Measure the one-time cost explicitly instead of concealing registry
+  // construction outside the reusable-compile timing window.
+  if mode == "registry_prepare" {
+    sink.keep(@schema.SchemaRegistry::new(workload.groups[0].resources))
+    return (1, 1)
+  }
   let mut operations = 0
   let mut accepted = 0
   for group in workload.groups {
@@ -108,6 +114,7 @@ fn execute(options : Options) -> Unit raise {
   let mode = match options.scenario {
     "official_compile" => "compile"
     "official_compile_registry" => "compile_registry"
+    "official_registry_prepare" => "registry_prepare"
     "official_compile_validate" => "compile_validate"
     "official_diagnostics" => "diagnostics"
     "official_validate"
@@ -121,12 +128,16 @@ fn execute(options : Options) -> Unit raise {
     _ => fail("unknown scenario: " + options.scenario)
   }
   let true_count = validate_workload(workload)
-  let expected_operations = if mode == "compile" || mode == "compile_registry" {
+  let expected_operations = if mode == "registry_prepare" {
+    1
+  } else if mode == "compile" || mode == "compile_registry" {
     workload.groups.length()
   } else {
     workload.ids.length()
   }
-  let expected_accepted = if mode == "compile" || mode == "compile_registry" {
+  let expected_accepted = if mode == "registry_prepare" {
+    1
+  } else if mode == "compile" || mode == "compile_registry" {
     workload.groups.length()
   } else {
     true_count
@@ -170,7 +181,9 @@ fn execute(options : Options) -> Unit raise {
     "build_mode": build_mode,
     "smoke": options.smoke,
     "mode": mode,
-    "operation_unit": if mode == "compile" || mode == "compile_registry" {
+    "operation_unit": if mode == "registry_prepare" {
+      "registry"
+    } else if mode == "compile" || mode == "compile_registry" {
       "schema"
     } else {
       "instance"

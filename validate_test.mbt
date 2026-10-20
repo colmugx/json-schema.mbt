@@ -97,3 +97,35 @@ test "preflight: delayed numeric error path escapes nested instance keys" {
     _ => fail("expected precise nested invalid number path")
   }
 }
+
+///|
+test "preflight: error-only pointer construction preserves paths and depth" {
+  let schema = compiled("true")
+  let invalid = Json::array([
+    Json::number(0.0),
+    Json::object({
+      "~key/": Json::array([Json::number(2.0), Json::number(0.0 / 0.0)]),
+    }),
+  ])
+  try schema.valid(invalid) catch {
+    @json-schema.EvaluationError::InvalidNumber(path~) =>
+      assert_eq(path, "/1/~0key~1/1")
+    error => raise error
+  } noraise {
+    _ => fail("expected nested numeric error path")
+  }
+  try schema.faults(invalid) catch {
+    @json-schema.EvaluationError::InvalidNumber(path~) =>
+      assert_eq(path, "/1/~0key~1/1")
+    error => raise error
+  } noraise {
+    _ => fail("expected nested numeric error in faults")
+  }
+  let overflow = Json::array([Json::array([Json::number(1.0)])])
+  try schema.valid(overflow, max_depth=1) catch {
+    @json-schema.EvaluationError::DepthLimit(1) => ()
+    error => raise error
+  } noraise {
+    _ => fail("expected depth limit after pointer removal")
+  }
+}

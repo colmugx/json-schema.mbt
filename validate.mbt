@@ -35,34 +35,22 @@ pub fn Schema::faults(
 }
 
 ///|
-// Validate without constructing an escaped JSON Pointer at every successful
-// array element and object field. Build it only for a numeric error.
+// Preflight traverses the entire instance before evaluation, so invalid numeric
+// nodes and exhausted depth budgets are errors even when a schema rejects early.
+// Return a pointer only when a numeric error exists; the common successful
+// traversal allocates no path segments or index strings.
 fn check_instance(value : Json, depth : Int32, limit : Int32) -> Unit raise EvaluationError {
-  if limit < 1 || depth > limit {
-    raise EvaluationError::DepthLimit(limit)
-  }
-  match value {
-    Object(_) | Array(_) => {
-      let segments : Array[String] = []
-      check_instance_tree(value, segments, depth, limit)
-    }
-    Number(number, repr~) => {
-      if (repr is Some(_) && ExactNumber::of_json(value) is None) ||
-        (repr is None && (number.is_inf() || number.is_nan())) {
-        raise InvalidNumber(path="")
-      }
-    }
-    _ => ()
+  if invalid_number_path(value, depth, limit) is Some(path) {
+    raise InvalidNumber(path~)
   }
 }
 
 ///|
-fn check_instance_tree(
+fn invalid_number_path(
   value : Json,
-  segments : Array[String],
   depth : Int32,
   limit : Int32,
-) -> Unit raise EvaluationError {
+) -> String? raise EvaluationError {
   if limit < 1 || depth > limit {
     raise EvaluationError::DepthLimit(limit)
   }
@@ -70,24 +58,28 @@ fn check_instance_tree(
     Number(number, repr~) => {
       if (repr is Some(_) && ExactNumber::of_json(value) is None) ||
         (repr is None && (number.is_inf() || number.is_nan())) {
-        let mut path = ""
-        for segment in segments { path = pointer_step(path, segment) }
-        raise InvalidNumber(path~)
+        Some("")
+      } else {
+        None
       }
     }
-    Object(fields) =>
+    Object(fields) => {
       for name, child in fields {
-        segments.push(name)
-        check_instance_tree(child, segments, depth + 1, limit)
-        ignore(segments.pop())
+        if invalid_number_path(child, depth + 1, limit) is Some(tail) {
+          return Some(pointer_step("", name) + tail)
+        }
       }
-    Array(values) =>
+      None
+    }
+    Array(values) => {
       for index, child in values {
-        segments.push(index.to_string())
-        check_instance_tree(child, segments, depth + 1, limit)
-        ignore(segments.pop())
+        if invalid_number_path(child, depth + 1, limit) is Some(tail) {
+          return Some("/" + index.to_string() + tail)
+        }
       }
-    _ => ()
+      None
+    }
+    _ => None
   }
 }
 

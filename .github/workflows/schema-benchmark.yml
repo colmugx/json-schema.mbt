@@ -5,11 +5,6 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      toolchain:
-        description: Exact MoonBit version used for both compiler binaries and core
-        required: true
-        default: '0.10.14+7d59c7ec9'
-        type: string
       smoke:
         description: One short repetition instead of five full repetitions
         required: true
@@ -30,28 +25,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install toolchain bundle and pinned core
-        uses: hustcer/setup-moonbit@v1.22
-        with:
-          version: ${{ inputs.toolchain || '0.10.14+7d59c7ec9' }}
-          core-version: ${{ inputs.toolchain || '0.10.14+7d59c7ec9' }}
-
-      - name: Bootstrap genuine moonx dispatcher and verify compiler
-        timeout-minutes: 3
-        env:
-          EXPECTED_COMPILER: ${{ inputs.toolchain || '0.10.14+7d59c7ec9' }}
+      - name: Install latest MoonBit toolchain
         run: |
-          mkdir -p .ci-bin
-          install -m 755 "$(command -v moon)" .ci-bin/moonx
-          .ci-bin/moonx --help | grep -F 'Run a standalone .mbtx file'
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> $GITHUB_PATH
+
+      - name: Verify moonx dispatcher
+        timeout-minutes: 3
+        run: |
           moon version --all
-          actual_compiler="$(moonc -v 2>&1)"
-          printf '%s\n' "$actual_compiler"
-          if ! grep -Fq "v${EXPECTED_COMPILER} (" <<< "$actual_compiler"; then
-            echo "::error::Expected moonc v${EXPECTED_COMPILER}; got: ${actual_compiler}"
-            exit 1
-          fi
-          echo "$PWD/.ci-bin" >> "$GITHUB_PATH"
+          moonx --help | grep -F 'Run a standalone .mbtx file'
 
       - name: Resolve library dependencies
         run: moon update

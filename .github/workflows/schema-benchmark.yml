@@ -3,6 +3,7 @@ name: JSON Schema conformance and benchmark
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
     inputs:
       smoke:
@@ -41,7 +42,7 @@ jobs:
       - name: Save official corpus and measure native release plus moonx Wasm
         id: campaign
         timeout-minutes: 35
-        run: moonx benchmarks/run-campaign.mbtx ${{ inputs.smoke && 'smoke' || '' }}
+        run: moonx benchmarks/run-campaign.mbtx ${{ (github.event_name == 'pull_request' || inputs.smoke) && 'smoke' || '' }}
       - name: Publish summary, including incomplete execution
         if: always() && (steps.campaign.outcome == 'success' || steps.campaign.outcome == 'failure')
         run: moonx benchmarks/report.mbtx

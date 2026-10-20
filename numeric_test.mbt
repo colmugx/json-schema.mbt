@@ -112,3 +112,41 @@ test "uniqueItems: large primitive arrays hash without changing exact semantics"
   assert_false(schema.valid(@json-schema.parse("[{\"n\":1},{\"n\":1.0}]")))
 }
 
+
+///|
+test "numeric: zero-bound comparison handles exact exponents and nonfinite" {
+  for zero in ["0", "-0", "0e400", "0.0000000000000000"] {
+    let z = exact(zero)
+    assert_eq(@json-schema.ExactNumber::from_double(-2.5).compare(z), -1)
+    assert_eq(@json-schema.ExactNumber::from_double(0.0).compare(z), 0)
+    assert_eq(@json-schema.ExactNumber::from_double(-0.0).compare(z), 0)
+    assert_eq(@json-schema.ExactNumber::from_double(2.5).compare(z), 1)
+    assert_eq(z.compare(@json-schema.ExactNumber::from_double(-2.5)), 1)
+    assert_eq(z.compare(@json-schema.ExactNumber::from_double(0.0)), 0)
+    assert_eq(z.compare(@json-schema.ExactNumber::from_double(2.5)), -1)
+  }
+  assert_eq(@json-schema.ExactNumber::from_double(2.5).compare(exact("1e400")), -1)
+  let nonfinite = @json-schema.ExactNumber::from_double(1.0 / 0.0)
+  let raised = try {
+    ignore(nonfinite.compare(exact("0")))
+    false
+  } catch {
+    @json-schema.NumericError::InvalidNumber => true
+  }
+  assert_true(raised)
+}
+
+///|
+test "uniqueItems: unchecked prior array read stays inside proven bounds" {
+  let unique = @json-schema.Schema::compile(@json-schema.parse("{\"uniqueItems\":true}"))
+  assert_true(unique.valid(@json-schema.parse("[]")))
+  assert_true(unique.valid(@json-schema.parse("[[],[1],[1,2]]")))
+  assert_false(unique.valid(@json-schema.parse("[[],[1],[]]")))
+  assert_false(unique.valid(@json-schema.parse("[{\"a\":[1]},{\"a\":[1.0]}]")))
+  assert_true(unique.valid(@json-schema.parse("[[1],[1,2]]")))
+  let constant = @json-schema.Schema::compile(
+    @json-schema.parse("{\"const\":[{\"a\":[1,2]},[3]]}"),
+  )
+  assert_true(constant.valid(@json-schema.parse("[{\"a\":[1.0,2]},[3]]")))
+  assert_false(constant.valid(@json-schema.parse("[{\"a\":[1]},[3]]")))
+}

@@ -120,8 +120,11 @@ fn evaluate_array(
         duplicate
       } else {
         let mut duplicate = false
+        // SAFETY (Core Array::unsafe_get): index is from the outer
+        // enumeration of values, hence 0 <= previous < index < values.length().
+        // Neither schema_equal nor this loop mutates values.
         for previous in 0..<index {
-          if schema_equal(values[previous], child) {
+          if schema_equal(values.unsafe_get(previous), child) {
             duplicate = true
             break
           }

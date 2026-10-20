@@ -54,6 +54,22 @@ fn validate_workload(workload : Workload) -> Int32 raise {
 }
 
 ///|
+// Registry reuse is a distinct compilation path: independently validate every
+// official timing-eligible case before treating its compile cost as evidence.
+fn validate_registry_workload(workload : Workload) -> Unit raise {
+  for group in workload.groups {
+    let registry = group.registry.unwrap()
+    let compiled = registry.compile(group.document)
+    for instance in group.instances {
+      guard compiled.valid(instance.value) == instance.expected &&
+        compiled.faults(instance.value).is_empty() == instance.expected else {
+        fail("registry compiled plan disagrees with official corpus: " + instance.id)
+      }
+    }
+  }
+}
+
+///|
 fn batch(
   workload : Workload,
   mode : String,
@@ -128,6 +144,9 @@ fn execute(options : Options) -> Unit raise {
     _ => fail("unknown scenario: " + options.scenario)
   }
   let true_count = validate_workload(workload)
+  if mode == "compile_registry" {
+    validate_registry_workload(workload)
+  }
   let expected_operations = if mode == "registry_prepare" {
     1
   } else if mode == "compile" || mode == "compile_registry" {

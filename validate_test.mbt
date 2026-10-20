@@ -82,3 +82,18 @@ test "budgets: traversal and invalid numeric nodes raise rather than mismatch" {
     _ => fail("expected schema depth limit")
   }
 }
+
+///|
+test "preflight: delayed numeric error path escapes nested instance keys" {
+  let schema = compiled("true")
+  let invalid = Json::object({
+    "a~/": Json::array([Json::number(1.0), Json::number(0.0 / 0.0)]),
+  })
+  try schema.valid(invalid) catch {
+    @json-schema.EvaluationError::InvalidNumber(path~) =>
+      assert_eq(path, "/a~0~1/1")
+    error => raise error
+  } noraise {
+    _ => fail("expected precise nested invalid number path")
+  }
+}

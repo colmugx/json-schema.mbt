@@ -64,7 +64,7 @@ fn slot_at(
   pointer : String,
   path : String,
 ) -> Int32 raise CompileError {
-  match index.docs[doc].slots.get(pointer) {
+  match index.docs[doc].slot(pointer) {
     Some(slot) => slot
     // Unreachable for positions the resource scan has seen; reachable when a
     // pointer fragment addresses a non-schema registry document root.
@@ -105,7 +105,7 @@ fn resource_root_slot(
   root_pointer : String,
   path : String,
 ) -> Int32 raise CompileError {
-  match index.docs[doc].slots.get(root_pointer) {
+  match index.docs[doc].slot(root_pointer) {
     Some(slot) => slot
     None => {
       invalid_keyword(path, "reference target is not a schema")

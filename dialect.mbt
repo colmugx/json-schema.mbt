@@ -186,7 +186,7 @@ fn validate_meta_locations(
       "$vocabulary is only allowed at a metaschema resource root",
     )
   }
-  let dialect = match index.docs[doc].slots.get(path) {
+  let dialect = match index.docs[doc].slot(path) {
     Some(slot) if index.resource_of[slot] >= 0 =>
       index.resources[index.resource_of[slot]].dialect
     _ => inherited

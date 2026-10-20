@@ -8,6 +8,14 @@ priv struct Doc {
   root : Json
   identity : String?
   slots : Map[String, Int32]
+  // Cached documents share immutable pointer maps. Their slot numbers refer
+  // to the template; map them into the private compilation arena by offset.
+  slot_offset : Int32
+}
+
+///|
+fn Doc::slot(self : Doc, path : String) -> Int32? {
+  self.slots.get(path).map(slot => slot + self.slot_offset)
 }
 
 ///|
@@ -107,15 +115,15 @@ pub fn SchemaRegistry::new(
 fn append_registry_template(index : RefIndex, cached : SchemaRegistry) -> Unit {
   let doc_offset = index.docs.length()
   let slot_offset = index.nodes.length()
+  // SAFETY/ownership: only index_walk mutates Doc.slots, and it is called
+  // exclusively by add_document on fresh documents. Cached maps remain
+  // immutable and are shared read-only between independent compilations.
   for original in cached.template.docs {
-    let slots : Map[String, Int32] = Map([])
-    for pointer, slot in original.slots {
-      slots[pointer] = slot + slot_offset
-    }
     index.docs.push({
       root: original.root,
       identity: original.identity,
-      slots,
+      slots: original.slots,
+      slot_offset,
     })
   }
   for i in 0..<cached.template.paths.length() {
@@ -136,7 +144,7 @@ fn add_document(
   limit : Int32,
 ) -> Int32 raise CompileError {
   let doc = index.docs.length()
-  index.docs.push({ root: value, identity, slots: Map([]), })
+  index.docs.push({ root: value, identity, slots: Map([]), slot_offset: 0, })
   index_walk(index, doc, value, "", 0, limit)
   doc
 }
@@ -439,7 +447,7 @@ fn make_resource(
         if pointer == "" {
           uri
         } else {
-          index.resources[index.resource_of[index.docs[doc].slots[""]]].document_uri
+          index.resources[index.resource_of[index.docs[doc].slot("").unwrap()]].document_uri
         }
     },
     dynamic_anchors: Map([]),
@@ -469,7 +477,8 @@ fn ensure_slot_resource(
   let pointer = index.paths[slot]
   let mut inherited = 0
   let mut nearest = -1
-  for ancestor, candidate in index.docs[doc].slots {
+  for ancestor, raw_candidate in index.docs[doc].slots {
+    let candidate = raw_candidate + index.docs[doc].slot_offset
     if index.resource_of[candidate] >= 0 &&
       ancestor.length() > nearest &&
       (ancestor == "" || pointer.has_prefix(ancestor + "/")) {
@@ -497,7 +506,7 @@ fn assign_resource_slot(
   pointer : String,
   resource : Int32,
 ) -> Unit {
-  match index.docs[doc].slots.get(pointer) {
+  match index.docs[doc].slot(pointer) {
     Some(slot) => index.resource_of[slot] = resource
     // Unreachable: every object/boolean position receives a slot.
     None => ()
@@ -539,7 +548,7 @@ fn register_anchor(
   if static_anchors.contains(text) || dynamic_anchors.contains(text) {
     invalid_keyword(location, "duplicate fragment name in resource: " + text)
   }
-  let slot = match index.docs[doc].slots.get(pointer) {
+  let slot = match index.docs[doc].slot(pointer) {
     Some(slot) => slot
     // Unreachable: anchors are scanned on object schema positions.
     None => 0

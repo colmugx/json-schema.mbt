@@ -131,8 +131,8 @@ fn compile_into(
   depth : Int32,
   limit : Int32,
 ) -> Plan raise CompileError {
-  let slots = index.docs[doc].slots
-  let resource = match slots.get(path) {
+  let current_slot = index.docs[doc].slot(path)
+  let resource = match current_slot {
     Some(slot) => {
       let actual = ensure_slot_resource(index, slot, limit)
       index.visited[slot] = true
@@ -141,8 +141,7 @@ fn compile_into(
     None => resource
   }
   let plan = compile_node(index, doc, resource, document, path, depth, limit)
-  if slots.contains(path) {
-    let slot = slots[path]
+  if current_slot is Some(slot) {
     index.nodes[slot] = Located(resource, plan)
     index.visited[slot] = true
   }

@@ -114,22 +114,26 @@ fn evaluate(
           }
         }
       }
-      for rule in rules {
-        if rule is (UnevaluatedProperties(_, _) | UnevaluatedItems(_, _)) {
-          if !evaluate_rule(
-              program,
-              rule,
-              value,
-              path,
-              failures,
-              depth,
-              limit,
-              scope~,
-              evaluated=marks,
-            ) {
-            valid = false
-            if failures is None {
-              return false
+      // The entire plan contains no unevaluated keywords: skip the otherwise
+      // redundant second rule scan on the common boolean validation path.
+      if program.collect_evaluated {
+        for rule in rules {
+          if rule is (UnevaluatedProperties(_, _) | UnevaluatedItems(_, _)) {
+            if !evaluate_rule(
+                program,
+                rule,
+                value,
+                path,
+                failures,
+                depth,
+                limit,
+                scope~,
+                evaluated=marks,
+              ) {
+              valid = false
+              if failures is None {
+                return false
+              }
             }
           }
         }

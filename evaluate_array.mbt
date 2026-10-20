@@ -61,7 +61,7 @@ fn evaluate_array(
   let mut items_valid = true
   let mut matches = 0
   for index, child in values {
-    let child_path = pointer_step(path, index.to_string())
+    let child_path = if failures is None { "" } else { pointer_step(path, index.to_string()) }
     let schema = if index < plan.prefix.length() {
       Some(plan.prefix[index])
     } else {

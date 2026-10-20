@@ -31,9 +31,9 @@ fn evaluate_array(
       }
     }
   }
-  // Construct only the set used by this schema. Non-unique arrays (including
-  // array1024) must not allocate hash tables merely to evaluate their items.
-  let seen_strings : Set[String]? = if unique_kind == 1 { Some(Set([])) } else { None }
+  // Preserve the original string-set allocation behavior; only primitive
+  // doubles benefit from the specialized IEEE-bit hashing path.
+  let seen : Set[String] = Set([])
   let seen_numbers : Set[Double]? = if unique_kind == 2 { Some(Set([])) } else { None }
   if plan.minimum is Some(bound) && values.length() < bound {
     valid = fail(
@@ -104,7 +104,6 @@ fn evaluate_array(
           String(text) => text
           _ => abort("unique kind")
         }
-        let seen = seen_strings.unwrap()
         let duplicate = seen.contains(key)
         seen.add(key)
         duplicate

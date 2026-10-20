@@ -263,8 +263,16 @@ fn aligned(
 ///|
 /// Decimal integer predicate; no rounding or floating-point tolerance.
 pub fn ExactNumber::is_integer(self : ExactNumber) -> Bool raise NumericError {
-  let (coefficient, scale) = self.parts()
-  scale <= 0 || coefficient.mod(decimal_power(scale)).is_zero()
+  match self {
+    Double(value) => {
+      if value.is_inf() || value.is_nan() { raise InvalidNumber }
+      value.floor() == value
+    }
+    Repr(..) => {
+      let (coefficient, scale) = self.parts()
+      scale <= 0 || coefficient.mod(decimal_power(scale)).is_zero()
+    }
+  }
 }
 
 ///|
@@ -273,8 +281,18 @@ pub fn ExactNumber::equal(
   self : ExactNumber,
   other : ExactNumber,
 ) -> Bool raise NumericError {
-  let (a, b) = aligned(self, other)
-  a == b
+  match (self, other) {
+    (Double(a), Double(b)) => {
+      if a.is_inf() || a.is_nan() || b.is_inf() || b.is_nan() {
+        raise InvalidNumber
+      }
+      a == b
+    }
+    _ => {
+      let (a, b) = aligned(self, other)
+      a == b
+    }
+  }
 }
 
 ///|
@@ -282,13 +300,17 @@ pub fn ExactNumber::compare(
   self : ExactNumber,
   other : ExactNumber,
 ) -> Int32 raise NumericError {
-  let (a, b) = aligned(self, other)
-  if a < b {
-    -1
-  } else if a > b {
-    1
-  } else {
-    0
+  match (self, other) {
+    (Double(a), Double(b)) => {
+      if a.is_inf() || a.is_nan() || b.is_inf() || b.is_nan() {
+        raise InvalidNumber
+      }
+      if a < b { -1 } else if a > b { 1 } else { 0 }
+    }
+    _ => {
+      let (a, b) = aligned(self, other)
+      if a < b { -1 } else if a > b { 1 } else { 0 }
+    }
   }
 }
 
@@ -307,13 +329,15 @@ pub fn ExactNumber::multiple_of(
 
 ///|
 pub fn ExactNumber::sign(self : ExactNumber) -> Int32 raise NumericError {
-  let (coefficient, _) = self.parts()
-  let zero = @bigint.BigInt::from_int(0)
-  if coefficient < zero {
-    -1
-  } else if coefficient > zero {
-    1
-  } else {
-    0
+  match self {
+    Double(value) => {
+      if value.is_inf() || value.is_nan() { raise InvalidNumber }
+      if value < 0.0 { -1 } else if value > 0.0 { 1 } else { 0 }
+    }
+    Repr(..) => {
+      let (coefficient, _) = self.parts()
+      let zero = @bigint.BigInt::from_int(0)
+      if coefficient < zero { -1 } else if coefficient > zero { 1 } else { 0 }
+    }
   }
 }

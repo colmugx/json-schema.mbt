@@ -50,6 +50,7 @@ test "registry snapshot: invalid unused resources remain rejected" {
     false
   } catch {
     @json-schema.CompileError::InvalidKeyword(..) => true
+    _ => false
   }
   assert_true(rejected)
 }
@@ -64,6 +65,7 @@ test "registry snapshot: duplicate root retrieval identity remains rejected" {
     false
   } catch {
     @json-schema.CompileError::InvalidKeyword(..) => true
+    _ => false
   }
   assert_true(rejected)
 }

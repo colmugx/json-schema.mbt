@@ -6,7 +6,7 @@ pub fn Schema::valid(
   value : Json,
   max_depth~ : Int32 = 128,
 ) -> Bool raise {
-  check_instance(value, "", 0, max_depth)
+  check_instance(value, 0, max_depth)
   evaluate(self.plan, self.plan.nodes[0], value, "", None, 0, max_depth)
 }
 
@@ -18,7 +18,7 @@ pub fn Schema::faults(
   value : Json,
   max_depth~ : Int32 = 128,
 ) -> Array[Fault] raise {
-  check_instance(value, "", 0, max_depth)
+  check_instance(value, 0, max_depth)
   let failures : Array[Fault] = []
   ignore(
     evaluate(
@@ -35,9 +35,17 @@ pub fn Schema::faults(
 }
 
 ///|
-fn check_instance(
+// Validate without constructing an escaped JSON Pointer at every successful
+// array element and object field. Build it only for a numeric error.
+fn check_instance(value : Json, depth : Int32, limit : Int32) -> Unit raise EvaluationError {
+  let segments : Array[String] = []
+  check_instance_tree(value, segments, depth, limit)
+}
+
+///|
+fn check_instance_tree(
   value : Json,
-  path : String,
+  segments : Array[String],
   depth : Int32,
   limit : Int32,
 ) -> Unit raise EvaluationError {
@@ -45,22 +53,25 @@ fn check_instance(
     raise EvaluationError::DepthLimit(limit)
   }
   match value {
-    Number(_, ..) =>
-      if ExactNumber::of_json(value) is None {
+    Number(number, repr~) => {
+      if number.is_inf() || number.is_nan() ||
+        (repr is Some(_) && ExactNumber::of_json(value) is None) {
+        let mut path = ""
+        for segment in segments { path = pointer_step(path, segment) }
         raise InvalidNumber(path~)
       }
+    }
     Object(fields) =>
       for name, child in fields {
-        check_instance(child, pointer_step(path, name), depth + 1, limit)
+        segments.push(name)
+        check_instance_tree(child, segments, depth + 1, limit)
+        ignore(segments.pop())
       }
     Array(values) =>
       for index, child in values {
-        check_instance(
-          child,
-          pointer_step(path, index.to_string()),
-          depth + 1,
-          limit,
-        )
+        segments.push(index.to_string())
+        check_instance_tree(child, segments, depth + 1, limit)
+        ignore(segments.pop())
       }
     _ => ()
   }
@@ -78,15 +89,28 @@ fn numeric_value(
 }
 
 ///|
+fn number_has_repr(value : Json) -> Bool {
+  match value {
+    Number(_, repr~) => repr is Some(_)
+    _ => false
+  }
+}
+
+///|
 // JSON Schema equality compares numbers mathematically, including nested ones.
 // Inputs have already passed numeric/depth checks before this recursion.
 fn schema_equal(left : Json, right : Json) -> Bool raise NumericError {
   match (left, right) {
-    (Number(_, ..), Number(_, ..)) =>
-      match (ExactNumber::of_json(left), ExactNumber::of_json(right)) {
-        (Some(a), Some(b)) => a.equal(b)
-        _ => false
+    (Number(a, ..), Number(b, ..)) => {
+      if !number_has_repr(left) && !number_has_repr(right) {
+        a == b
+      } else {
+        match (ExactNumber::of_json(left), ExactNumber::of_json(right)) {
+          (Some(a), Some(b)) => a.equal(b)
+          _ => false
+        }
       }
+    }
     (Object(a), Object(b)) => {
       if a.length() != b.length() {
         return false

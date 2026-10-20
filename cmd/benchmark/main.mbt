@@ -62,7 +62,14 @@ fn batch(
   let mut operations = 0
   let mut accepted = 0
   for group in workload.groups {
-    if mode == "compile" {
+    if mode == "compile_registry" {
+      let registry = group.registry.unwrap()
+      sink.keep(registry.compile(group.document))
+      operations += 1
+      accepted += 1
+      continue
+    }
+    if mode == "compile" || mode == "compile_registry" {
       sink.keep(
         @schema.Schema::compile(group.document, resources=group.resources),
       )
@@ -100,6 +107,7 @@ fn execute(options : Options) -> Unit raise {
   }
   let mode = match options.scenario {
     "official_compile" => "compile"
+    "official_compile_registry" => "compile_registry"
     "official_compile_validate" => "compile_validate"
     "official_diagnostics" => "diagnostics"
     "official_validate"
@@ -113,12 +121,12 @@ fn execute(options : Options) -> Unit raise {
     _ => fail("unknown scenario: " + options.scenario)
   }
   let true_count = validate_workload(workload)
-  let expected_operations = if mode == "compile" {
+  let expected_operations = if mode == "compile" || mode == "compile_registry" {
     workload.groups.length()
   } else {
     workload.ids.length()
   }
-  let expected_accepted = if mode == "compile" {
+  let expected_accepted = if mode == "compile" || mode == "compile_registry" {
     workload.groups.length()
   } else {
     true_count
@@ -162,7 +170,7 @@ fn execute(options : Options) -> Unit raise {
     "build_mode": build_mode,
     "smoke": options.smoke,
     "mode": mode,
-    "operation_unit": if mode == "compile" {
+    "operation_unit": if mode == "compile" || mode == "compile_registry" {
       "schema"
     } else {
       "instance"

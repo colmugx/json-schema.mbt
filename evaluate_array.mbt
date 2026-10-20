@@ -12,6 +12,26 @@ fn evaluate_array(
 ) -> Bool raise {
   guard value is Array(values) else { return true }
   let mut valid = true
+  // Only homogeneous arrays of constructed primitive values can be hashed
+  // without losing the exact decimal and recursive JSON equality contract.
+  let mut unique_kind = if plan.unique && values.length() >= 16 { 3 } else { 0 }
+  if unique_kind != 0 {
+    for item in values {
+      match item {
+        String(_) => {
+          if unique_kind == 3 { unique_kind = 1 }
+          else if unique_kind != 1 { unique_kind = 0; break }
+        }
+        Number(_, repr~) => {
+          if repr is Some(_) { unique_kind = 0; break }
+          if unique_kind == 3 { unique_kind = 2 }
+          else if unique_kind != 2 { unique_kind = 0; break }
+        }
+        _ => { unique_kind = 0; break }
+      }
+    }
+  }
+  let seen : Set[String] = Set([])
   if plan.minimum is Some(bound) && values.length() < bound {
     valid = fail(
       failures,
@@ -76,19 +96,37 @@ fn evaluate_array(
       }
     }
     if plan.unique {
-      for previous in 0..<index {
-        if schema_equal(values[previous], child) {
-          valid = fail(
-            failures,
-            child_path,
-            pointer_step(plan.path, "uniqueItems"),
-            "uniqueItems",
-            "array contains equal items",
-          )
-          if failures is None {
-            return false
+      let duplicate = if unique_kind == 1 {
+        let key = match child { String(text) => text, _ => abort("unique kind") }
+        let duplicate = seen.contains(key)
+        seen.add(key)
+        duplicate
+      } else if unique_kind == 2 {
+        let number = match child { Number(number, ..) => number, _ => abort("unique kind") }
+        let key = if number == 0.0 { "0" } else { number.to_string() }
+        let duplicate = seen.contains(key)
+        seen.add(key)
+        duplicate
+      } else {
+        let mut duplicate = false
+        for previous in 0..<index {
+          if schema_equal(values[previous], child) {
+            duplicate = true
+            break
           }
-          break
+        }
+        duplicate
+      }
+      if duplicate {
+        valid = fail(
+          failures,
+          child_path,
+          pointer_step(plan.path, "uniqueItems"),
+          "uniqueItems",
+          "array contains equal items",
+        )
+        if failures is None {
+          return false
         }
       }
     }

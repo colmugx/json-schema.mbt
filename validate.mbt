@@ -38,8 +38,22 @@ pub fn Schema::faults(
 // Validate without constructing an escaped JSON Pointer at every successful
 // array element and object field. Build it only for a numeric error.
 fn check_instance(value : Json, depth : Int32, limit : Int32) -> Unit raise EvaluationError {
-  let segments : Array[String] = []
-  check_instance_tree(value, segments, depth, limit)
+  if limit < 1 || depth > limit {
+    raise EvaluationError::DepthLimit(limit)
+  }
+  match value {
+    Object(_) | Array(_) => {
+      let segments : Array[String] = []
+      check_instance_tree(value, segments, depth, limit)
+    }
+    Number(number, repr~) => {
+      if (repr is Some(_) && ExactNumber::of_json(value) is None) ||
+        (repr is None && (number.is_inf() || number.is_nan())) {
+        raise InvalidNumber(path="")
+      }
+    }
+    _ => ()
+  }
 }
 
 ///|

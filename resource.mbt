@@ -109,9 +109,9 @@ pub fn SchemaRegistry::new(
 }
 
 ///|
-// Keep source registry slots in one shared read-only template, but rebase them
-// into private per-compilation arrays and hash maps. Never reuse visited,
-// resource_of or compiled Plan state from another invocation.
+// Share immutable source pointer maps across compilations and map their slot
+// indices into private per-compilation arenas by an offset. Never reuse
+// visited, resource_of or compiled Plan state from another invocation.
 fn append_registry_template(index : RefIndex, cached : SchemaRegistry) -> Unit {
   let doc_offset = index.docs.length()
   let slot_offset = index.nodes.length()

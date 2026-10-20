@@ -64,6 +64,71 @@ fn index_walk(
 }
 
 ///|
+/// A reusable, immutable snapshot of a registry's validated documents and
+/// preindexed schema positions. The snapshot never contains compiled plans or
+/// mutable reference-resolution state.
+///
+/// Build this once when compiling many independent roots against the same
+/// resources. Mutation of the caller's original JSON or map after creation
+/// cannot affect the registry; each compilation independently owns its plans.
+pub struct SchemaRegistry {
+  priv template : RefIndex
+  priv max_depth : Int32
+}
+
+///|
+/// Validate and preindex a registry exactly once. All resources are validated,
+/// including ones no compiled root eventually references.
+pub fn SchemaRegistry::new(
+  resources : Map[String, Json],
+  max_depth~ : Int32 = 128,
+) -> SchemaRegistry raise CompileError {
+  if max_depth < 1 { raise CompileError::DepthLimit(max_depth) }
+  let template = empty_ref_index()
+  let seen : Set[String] = Set([])
+  for key, value in resources {
+    check_schema_json(value, "", 0, max_depth)
+    validate_document_uri(key, "resources")
+    let identity = canonical_document_uri(key)
+    if seen.contains(identity) || builtin_metaschema_uri(identity) {
+      invalid_keyword("resources", "duplicate retrieval URI: " + identity)
+    }
+    seen.add(identity)
+    // Copy before indexing: the caller may mutate its original tree later.
+    ignore(add_document(template, owned_json(value), Some(identity), max_depth))
+  }
+  { template, max_depth, }
+}
+
+///|
+// Keep source registry slots in one shared read-only template, but rebase them
+// into private per-compilation arrays and hash maps. Never reuse visited,
+// resource_of or compiled Plan state from another invocation.
+fn append_registry_template(index : RefIndex, cached : SchemaRegistry) -> Unit {
+  let doc_offset = index.docs.length()
+  let slot_offset = index.nodes.length()
+  for original in cached.template.docs {
+    let slots : Map[String, Int32] = Map([])
+    for pointer, slot in original.slots {
+      slots[pointer] = slot + slot_offset
+    }
+    index.docs.push({
+      root: original.root,
+      identity: original.identity,
+      slots,
+    })
+  }
+  for i in 0..<cached.template.paths.length() {
+    index.paths.push(cached.template.paths[i])
+    index.targets.push(cached.template.targets[i])
+    index.visited.push(false)
+    index.doc_of.push(cached.template.doc_of[i] + doc_offset)
+    index.resource_of.push(-1)
+    index.nodes.push(Pending)
+  }
+}
+
+///|
 fn add_document(
   index : RefIndex,
   value : Json,
@@ -81,13 +146,8 @@ fn add_document(
 /// registry document. Resource namespaces are registered when their document
 /// is referenced, so unrelated legacy documents do not change the active dialect.
 /// Schema-aware discovery still finds embedded canonical `$id` aliases.
-fn index_program(
-  document : Json,
-  base_uri : String?,
-  resources : Map[String, Json]?,
-  limit : Int32,
-) -> RefIndex raise CompileError {
-  let index : RefIndex = {
+fn empty_ref_index() -> RefIndex {
+  {
     docs: [],
     paths: [],
     targets: [],
@@ -105,6 +165,17 @@ fn index_program(
     dialects: Map([]),
     resolving_dialects: Set([]),
   }
+}
+
+///|
+fn index_program(
+  document : Json,
+  base_uri : String?,
+  resources : Map[String, Json]?,
+  limit : Int32,
+  cached : SchemaRegistry?,
+) -> RefIndex raise CompileError {
+  let index = empty_ref_index()
   match base_uri {
     Some(uri) => validate_document_uri(uri, "base_uri")
     None => ()
@@ -132,6 +203,21 @@ fn index_program(
       }
     }
     None => ()
+  }
+  if cached is Some(snapshot) {
+    if snapshot.max_depth != limit {
+      // A preindexed tree's recursion bound must match the compile bound.
+      raise CompileError::DepthLimit(limit)
+    }
+    for source in snapshot.template.docs {
+      if source.identity == base_uri.map(canonical_document_uri) {
+        invalid_keyword(
+          "resources",
+          "duplicate retrieval URI: " + source.identity.unwrap(),
+        )
+      }
+    }
+    append_registry_template(index, snapshot)
   }
   let supplied = index.docs.length()
   scan_resource(index, doc, document, "", 0, true, 0, limit)

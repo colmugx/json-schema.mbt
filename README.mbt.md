@@ -9,6 +9,39 @@ Static and dynamic references, resource identifiers and anchors, and
 use an explicit preloaded registry: the compiler and validator never fetch URIs.
 Custom dialects and vocabulary negotiation remain outside the supported profile.
 
+## Reuse a prevalidated schema resource registry
+
+For one or two compilations, use `Schema::compile(document, resources~)`.
+When compiling many independent schemas with the **same remote resources**,
+create a `SchemaRegistry` once and compile each document against the snapshot:
+
+```moonbit
+let resources : Map[String, Json] = Map([])
+resources["https://example.com/catalog"] = @json-schema.parse(
+  "{\"$id\":\"https://example.com/catalog\",\"$defs\":{\"item\":{\"type\":\"integer\"}}}",
+)
+let registry = @json-schema.SchemaRegistry::new(resources)
+let schema = registry.compile(
+  @json-schema.parse("{\"$ref\":\"https://example.com/catalog#/$defs/item\"}"),
+)
+assert_true(schema.valid(@json-schema.parse("3")))
+```
+
+The registry performs complete resource validation and indexes every supplied
+document once; each compilation receives independent mutable resolution and
+compiled-plan state. The input map and JSON trees are snapshotted: modifying
+them after registry construction does not change future compilations. The
+`max_depth` passed to `registry.compile` must match the one used to build it
+(default 128). A root's `base_uri` must not collide with a registered retrieval
+identity. Dynamic references, anchors, dialects and diagnostic pointers keep
+their existing semantics.
+
+**Performance contract:** reusing the registry can reduce *subsequent*
+compilation time; constructing the snapshot is nonzero work and should be
+included when benchmarking one-off compilation. The CI runs a dedicated paired
+Native benchmark contrasting legacy compilation and registry reuse, with
+registry construction deliberately outside the timed reuse loop.
+
 ## Use it for
 
 - Closed tool/request argument objects (`additionalProperties: false`).

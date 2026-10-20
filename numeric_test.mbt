@@ -76,3 +76,38 @@ test "numeric: const enum and uniqueItems use nested exact equality" {
     unique.valid(@json-schema.parse("[9007199254740993,9007199254740993.0]")),
   )
 }
+
+///|
+test "numeric: constructed-double fast paths preserve exact contract" {
+  let one = @json-schema.ExactNumber::from_double(1.0)
+  let neg_zero = @json-schema.ExactNumber::from_double(-0.0)
+  assert_true(one.equal(@json-schema.ExactNumber::from_double(1.0)))
+  assert_false(one.equal(@json-schema.ExactNumber::from_double(2.0)))
+  assert_eq(one.compare(@json-schema.ExactNumber::from_double(2.0)), -1)
+  assert_eq(one.sign(), 1)
+  assert_eq(neg_zero.sign(), 0)
+  assert_true(neg_zero.is_integer())
+  assert_false(@json-schema.ExactNumber::from_double(0.125).is_integer())
+  assert_true(@json-schema.ExactNumber::from_double(9007199254740992.0).is_integer())
+  assert_false(one.equal(exact("1.0000000000000001")))
+  assert_true(one.equal(exact("1.00")))
+}
+
+///|
+test "uniqueItems: large primitive arrays hash without changing exact semantics" {
+  let schema = @json-schema.Schema::compile(@json-schema.parse("{\"uniqueItems\":true}"))
+  let numbers : Array[Json] = []
+  for i in 0..<128 { numbers.push(Json::number(i.to_double())) }
+  assert_true(schema.valid(Json::array(numbers)))
+  numbers[127] = Json::number(-0.0)
+  assert_false(schema.valid(Json::array(numbers)))
+  assert_eq(schema.faults(Json::array(numbers))[0].instance_path, "/127")
+  let strings : Array[Json] = []
+  for i in 0..<128 { strings.push(Json::string(i.to_string())) }
+  assert_true(schema.valid(Json::array(strings)))
+  strings[127] = Json::string("0")
+  assert_eq(schema.faults(Json::array(strings))[0].instance_path, "/127")
+  assert_false(schema.valid(@json-schema.parse("[1,1.0]")))
+  assert_true(schema.valid(@json-schema.parse("[9007199254740992,9007199254740993]")))
+  assert_false(schema.valid(@json-schema.parse("[{\"n\":1},{\"n\":1.0}]")))
+}

@@ -26,6 +26,18 @@ pub fn Schema::compile(
     None => ()
   }
   let index = index_program(document, base_uri, resources, max_depth, None)
+  compile_index(index, document, max_depth)
+}
+
+///|
+// All mutable slots, resolved metadata and plans belong to the new compilation.
+// The normal and reusable-registry entry points share this exact finalization
+// path, including dynamic anchors, dialects and metaschema enforcement.
+fn compile_index(
+  index : RefIndex,
+  document : Json,
+  max_depth : Int32,
+) -> Schema raise CompileError {
   ignore(compile_into(index, 0, 0, document, "", 0, max_depth))
   // A dynamic target may live under an otherwise inactive applicator (for
   // example `then` without `if`). No runtime jump may reach an uncompiled slot.
@@ -100,47 +112,7 @@ pub fn SchemaRegistry::compile(
   }
   check_schema_json(document, "", 0, max_depth)
   let index = index_program(document, base_uri, None, max_depth, Some(self))
-  ignore(compile_into(index, 0, 0, document, "", 0, max_depth))
-  while true {
-    let pending : Array[Int32] = []
-    for resource in index.resources {
-      if resource.dialect.meta_slot is Some(slot) && !index.visited[slot] {
-        pending.push(slot)
-      }
-      for _, slot in resource.dynamic_anchors {
-        if !index.visited[slot] { pending.push(slot) }
-      }
-    }
-    if pending.is_empty() { break }
-    for slot in pending { ensure_compiled(index, slot, max_depth) }
-  }
-  let program : Program = {
-    nodes: index.nodes,
-    resources: index.resources,
-    collect_evaluated: index.collect_evaluated,
-    track_dynamic_scope: index.track_dynamic_scope,
-  }
-  for resource, metadata in index.resources {
-    if metadata.dialect.meta_slot is Some(target) {
-      let (doc, pointer) = index.sites[resource]
-      let slot = slot_at(index, doc, pointer, pointer)
-      let valid = evaluate(
-        program, program.nodes[target], index.targets[slot],
-        "", None, 0, max_depth,
-      ) catch {
-        EvaluationError::DepthLimit(_) =>
-          raise CompileError::DepthLimit(max_depth)
-        error => {
-          invalid_keyword(pointer, "metaschema evaluation failed: \{error}")
-          false
-        }
-      }
-      if !valid {
-        invalid_keyword(pointer, "schema does not satisfy metaschema: " + metadata.dialect.uri)
-      }
-    }
-  }
-  { plan: program, }
+  compile_index(index, document, max_depth)
 }
 
 ///|

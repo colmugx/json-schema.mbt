@@ -120,35 +120,37 @@ fn compile_into(
 }
 
 ///|
-// Bound annotation/const/enum traversal too, not just schema-node recursion.
-fn check_schema_json(
-  value : Json,
-  path : String,
-  depth : Int32,
-  limit : Int32,
-) -> Unit raise CompileError {
-  if depth > limit {
-    raise CompileError::DepthLimit(limit)
+// Traverse schema JSON without allocating successful child pointer strings.
+// Error pointers are constructed while unwinding, after the first invalid
+// numeric value has been identified.
+fn check_schema_json(value : Json, path : String, depth : Int32, limit : Int32) -> Unit raise CompileError {
+  if invalid_schema_number_path(value, depth, limit) is Some(suffix) {
+    invalid_keyword(path + suffix, "invalid JSON number or numeric representation")
   }
+}
+
+///|
+fn invalid_schema_number_path(value : Json, depth : Int32, limit : Int32) -> String? raise CompileError {
+  if depth > limit { raise CompileError::DepthLimit(limit) }
   match value {
-    Number(_, ..) =>
-      if ExactNumber::of_json(value) is None {
-        invalid_keyword(path, "invalid JSON number or numeric representation")
-      }
-    Object(fields) =>
+    Number(_, ..) => if ExactNumber::of_json(value) is None { Some("") } else { None }
+    Object(fields) => {
       for name, child in fields {
-        check_schema_json(child, pointer_step(path, name), depth + 1, limit)
+        if invalid_schema_number_path(child, depth + 1, limit) is Some(tail) {
+          return Some(pointer_step("", name) + tail)
+        }
       }
-    Array(values) =>
+      None
+    }
+    Array(values) => {
       for index, child in values {
-        check_schema_json(
-          child,
-          pointer_step(path, index.to_string()),
-          depth + 1,
-          limit,
-        )
+        if invalid_schema_number_path(child, depth + 1, limit) is Some(tail) {
+          return Some("/" + index.to_string() + tail)
+        }
       }
-    _ => ()
+      None
+    }
+    _ => None
   }
 }
 

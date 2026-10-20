@@ -131,7 +131,7 @@ pub fn SchemaRegistry::compile(
         EvaluationError::DepthLimit(_) =>
           raise CompileError::DepthLimit(max_depth)
         error => {
-          invalid_keyword(pointer, "metaschema evaluation failed: {error}")
+          invalid_keyword(pointer, "metaschema evaluation failed: \{error}")
           false
         }
       }

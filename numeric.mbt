@@ -323,12 +323,6 @@ pub fn ExactNumber::multiple_of(
   if divisor.sign() <= 0 {
     return false
   }
-  // Any positive representation of 1 (1, 1.0, 10e-1) divides exactly
-  // the mathematical integers and nothing else. Avoid two decimal
-  // expansions, a BigInt alignment and a modulo for this common schema.
-  if divisor.equal(Repr(coeff=@bigint.BigInt::from_int(1), scale=0)) {
-    return self.is_integer()
-  }
   let (a, b) = aligned(self, divisor)
   a.mod(b).is_zero()
 }

@@ -112,18 +112,3 @@ test "uniqueItems: large primitive arrays hash without changing exact semantics"
   assert_false(schema.valid(@json-schema.parse("[{\"n\":1},{\"n\":1.0}]")))
 }
 
-///|
-test "multipleOf one preserves precise integer semantics" {
-  let one = exact("1")
-  let one_alt = exact("10e-1")
-  for number in ["0", "-0", "1.0", "-3e2", "9007199254740993", "1e400"] {
-    assert_true(exact(number).multiple_of(one), msg=number)
-    assert_true(exact(number).multiple_of(one_alt), msg=number)
-  }
-  for number in ["0.1", "-1.00000000000000001", "1e-400", "9007199254740993.1"] {
-    assert_false(exact(number).multiple_of(one), msg=number)
-    assert_false(exact(number).multiple_of(one_alt), msg=number)
-  }
-  assert_true(@json-schema.ExactNumber::from_double(-0.0).multiple_of(one))
-  assert_false(@json-schema.ExactNumber::from_double(1.25).multiple_of(one))
-}

@@ -301,6 +301,17 @@ pub fn ExactNumber::compare(
   other : ExactNumber,
 ) -> Int32 raise NumericError {
   match (self, other) {
+    // Comparing a constructed binary64 number with an exact mathematical
+    // zero does not need decimal rendering, exponent alignment or BigInt.
+    // The coefficient is zero regardless of the Repr scale, including 0e400.
+    (Double(a), Repr(coeff~, ..)) if coeff.is_zero() => {
+      if a.is_inf() || a.is_nan() { raise InvalidNumber }
+      if a < 0.0 { -1 } else if a > 0.0 { 1 } else { 0 }
+    }
+    (Repr(coeff~, ..), Double(b)) if coeff.is_zero() => {
+      if b.is_inf() || b.is_nan() { raise InvalidNumber }
+      if b < 0.0 { 1 } else if b > 0.0 { -1 } else { 0 }
+    }
     (Double(a), Double(b)) => {
       if a.is_inf() || a.is_nan() || b.is_inf() || b.is_nan() {
         raise InvalidNumber

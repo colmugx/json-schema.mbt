@@ -130,11 +130,14 @@ fn schema_equal(left : Json, right : Json) -> Bool raise NumericError {
       true
     }
     (Array(a), Array(b)) => {
+      // SAFETY (Core Array::unsafe_get): length equality was checked, and
+      // 0 <= index < a.length() for the whole iteration. schema_equal only
+      // reads JSON trees and never changes the length of either array.
       if a.length() != b.length() {
         return false
       }
       for index, value in a {
-        if !schema_equal(value, b[index]) {
+        if !schema_equal(value, b.unsafe_get(index)) {
           return false
         }
       }

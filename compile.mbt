@@ -25,7 +25,7 @@ pub fn Schema::compile(
       }
     None => ()
   }
-  let index = index_program(document, base_uri, resources, max_depth)
+  let index = index_program(document, base_uri, resources, max_depth, None)
   ignore(compile_into(index, 0, 0, document, "", 0, max_depth))
   // A dynamic target may live under an otherwise inactive applicator (for
   // example `then` without `if`). No runtime jump may reach an uncompiled slot.
@@ -79,6 +79,64 @@ pub fn Schema::compile(
           pointer,
           "schema does not satisfy metaschema: " + metadata.dialect.uri,
         )
+      }
+    }
+  }
+  { plan: program, }
+}
+
+///|
+/// Compile against a validated registry snapshot. The registry has already
+/// verified all resources, but every call creates independent mutable plan
+/// state and preserves the same schema-specific checks as Schema::compile.
+pub fn SchemaRegistry::compile(
+  self : SchemaRegistry,
+  document : Json,
+  base_uri? : String,
+  max_depth~ : Int32 = 128,
+) -> Schema raise CompileError {
+  if max_depth != self.max_depth {
+    raise CompileError::DepthLimit(max_depth)
+  }
+  check_schema_json(document, "", 0, max_depth)
+  let index = index_program(document, base_uri, None, max_depth, Some(self))
+  ignore(compile_into(index, 0, 0, document, "", 0, max_depth))
+  while true {
+    let pending : Array[Int32] = []
+    for resource in index.resources {
+      if resource.dialect.meta_slot is Some(slot) && !index.visited[slot] {
+        pending.push(slot)
+      }
+      for _, slot in resource.dynamic_anchors {
+        if !index.visited[slot] { pending.push(slot) }
+      }
+    }
+    if pending.is_empty() { break }
+    for slot in pending { ensure_compiled(index, slot, max_depth) }
+  }
+  let program : Program = {
+    nodes: index.nodes,
+    resources: index.resources,
+    collect_evaluated: index.collect_evaluated,
+    track_dynamic_scope: index.track_dynamic_scope,
+  }
+  for resource, metadata in index.resources {
+    if metadata.dialect.meta_slot is Some(target) {
+      let (doc, pointer) = index.sites[resource]
+      let slot = slot_at(index, doc, pointer, pointer)
+      let valid = evaluate(
+        program, program.nodes[target], index.targets[slot],
+        "", None, 0, max_depth,
+      ) catch {
+        EvaluationError::DepthLimit(_) =>
+          raise CompileError::DepthLimit(max_depth)
+        error => {
+          invalid_keyword(pointer, "metaschema evaluation failed: {error}")
+          false
+        }
+      }
+      if !valid {
+        invalid_keyword(pointer, "schema does not satisfy metaschema: " + metadata.dialect.uri)
       }
     }
   }

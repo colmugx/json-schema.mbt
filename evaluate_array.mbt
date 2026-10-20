@@ -31,7 +31,10 @@ fn evaluate_array(
       }
     }
   }
-  let seen : Set[String] = Set([])
+  // Construct only the set used by this schema. Non-unique arrays (including
+  // array1024) must not allocate hash tables merely to evaluate their items.
+  let seen_strings : Set[String]? = if unique_kind == 1 { Some(Set([])) } else { None }
+  let seen_numbers : Set[Double]? = if unique_kind == 2 { Some(Set([])) } else { None }
   if plan.minimum is Some(bound) && values.length() < bound {
     valid = fail(
       failures,
@@ -101,6 +104,7 @@ fn evaluate_array(
           String(text) => text
           _ => abort("unique kind")
         }
+        let seen = seen_strings.unwrap()
         let duplicate = seen.contains(key)
         seen.add(key)
         duplicate
@@ -109,9 +113,11 @@ fn evaluate_array(
           Number(number, ..) => number
           _ => abort("unique kind")
         }
-        let key = if number == 0.0 { "0" } else { number.to_string() }
-        let duplicate = seen.contains(key)
-        seen.add(key)
+        // Core Hash[Double] normalizes signed zero and hashes the IEEE bits
+        // directly. No decimal rendering or string allocation per element.
+        let seen = seen_numbers.unwrap()
+        let duplicate = seen.contains(number)
+        seen.add(number)
         duplicate
       } else {
         let mut duplicate = false

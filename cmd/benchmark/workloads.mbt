@@ -9,6 +9,7 @@ struct Instance {
 struct Group {
   document : Json
   resources : Map[String, Json]
+  registry : @schema.SchemaRegistry?
   compiled : @schema.Schema
   instances : Array[Instance]
 }
@@ -80,6 +81,9 @@ fn official(manifest_path : String, result_path : String) -> Workload raise {
     }
     resources[uri] = @schema.parse(@fs.read_file_to_string(path))
   }
+  // The same remote corpus backs every official group. Prepare its registry
+  // once, outside benchmark clocks, for the explicitly reusable scenario.
+  let registry = @schema.SchemaRegistry::new(resources)
   let allowed : Set[String] = Set([])
   let mut standard_total = 0
   for record in records {
@@ -148,6 +152,7 @@ fn official(manifest_path : String, result_path : String) -> Workload raise {
       groups.push({
         document,
         resources,
+        registry: Some(registry),
         compiled: @schema.Schema::compile(document, resources~),
         instances,
       })

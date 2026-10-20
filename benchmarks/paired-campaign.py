@@ -309,11 +309,11 @@ def main():
                   "(negative means reuse is faster). "
                   "Each candidate revision runs both implementations in "
                   "alternating order. Registry creation is timed independently "
-                  "of reuse.\\n"
+                  "of reuse.\n"
                   f"Median one-time snapshot preparation: {startup_ns:,.0f} ns; "
                   f"median saving per schema: {saved_ns:,.0f} ns; "
                   f"estimated break-even: {break_even} schema compilations "
-                  "(single shared resource corpus, steady-state workloads).\\n")
+                  "(single shared resource corpus, steady-state workloads).\n")
         with (evidence / "comparison.md").open("a", encoding="utf-8") as out:
             out.write(report)
         print(report, flush=True)

@@ -104,6 +104,7 @@ priv struct Program {
   nodes : Array[Plan]
   resources : Array[ResourceMeta]
   collect_evaluated : Bool
+  track_dynamic_scope : Bool
 }
 
 ///|

@@ -18,23 +18,40 @@ fn evaluate_array(
   if unique_kind != 0 {
     for item in values {
       match item {
-        String(_) => {
-          if unique_kind == 3 { unique_kind = 1 }
-          else if unique_kind != 1 { unique_kind = 0; break }
-        }
+        String(_) =>
+          if unique_kind == 3 {
+            unique_kind = 1
+          } else if unique_kind != 1 {
+            unique_kind = 0
+            break
+          }
         Number(_, repr~) => {
-          if repr is Some(_) { unique_kind = 0; break }
-          if unique_kind == 3 { unique_kind = 2 }
-          else if unique_kind != 2 { unique_kind = 0; break }
+          if repr is Some(_) {
+            unique_kind = 0
+            break
+          }
+          if unique_kind == 3 {
+            unique_kind = 2
+          } else if unique_kind != 2 {
+            unique_kind = 0
+            break
+          }
         }
-        _ => { unique_kind = 0; break }
+        _ => {
+          unique_kind = 0
+          break
+        }
       }
     }
   }
   // Preserve the original string-set allocation behavior; only primitive
   // doubles benefit from the specialized IEEE-bit hashing path.
   let seen : Set[String] = Set([])
-  let seen_numbers : Set[Double]? = if unique_kind == 2 { Some(Set([])) } else { None }
+  let seen_numbers : Set[Double]? = if unique_kind == 2 {
+    Some(Set([]))
+  } else {
+    None
+  }
   if plan.minimum is Some(bound) && values.length() < bound {
     valid = fail(
       failures,
@@ -64,7 +81,11 @@ fn evaluate_array(
   let mut items_valid = true
   let mut matches = 0
   for index, child in values {
-    let child_path = if failures is None { "" } else { pointer_step(path, index.to_string()) }
+    let child_path = if failures is None {
+      ""
+    } else {
+      pointer_step(path, index.to_string())
+    }
     let schema = if index < plan.prefix.length() {
       Some(plan.prefix[index])
     } else {

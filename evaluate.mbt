@@ -43,7 +43,8 @@ fn evaluate(
   match plan {
     Pending => abort("uncompiled schema arena slot")
     Located(resource, inner) => {
-      let next_scope = if !program.track_dynamic_scope || scope.last() == Some(resource) {
+      let next_scope = if !program.track_dynamic_scope ||
+        scope.last() == Some(resource) {
         scope
       } else {
         let next = scope.copy()
@@ -338,7 +339,11 @@ fn evaluate_applicator(
             program,
             schema,
             child,
-            (if failures is None { "" } else { pointer_step(path, name) }),
+            if failures is None {
+              ""
+            } else {
+              pointer_step(path, name)
+            },
             failures,
             depth + 1,
             limit,
@@ -376,7 +381,11 @@ fn evaluate_applicator(
             program,
             schema,
             child,
-            (if failures is None { "" } else { pointer_step(path, index.to_string()) }),
+            if failures is None {
+              ""
+            } else {
+              pointer_step(path, index.to_string())
+            },
             failures,
             depth + 1,
             limit,

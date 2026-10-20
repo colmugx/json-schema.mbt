@@ -39,7 +39,11 @@ pub fn Schema::faults(
 // nodes and exhausted depth budgets are errors even when a schema rejects early.
 // Return a pointer only when a numeric error exists; the common successful
 // traversal allocates no path segments or index strings.
-fn check_instance(value : Json, depth : Int32, limit : Int32) -> Unit raise EvaluationError {
+fn check_instance(
+  value : Json,
+  depth : Int32,
+  limit : Int32,
+) -> Unit raise EvaluationError {
   if invalid_number_path(value, depth, limit) is Some(path) {
     raise InvalidNumber(path~)
   }
@@ -55,14 +59,13 @@ fn invalid_number_path(
     raise EvaluationError::DepthLimit(limit)
   }
   match value {
-    Number(number, repr~) => {
+    Number(number, repr~) =>
       if (repr is Some(_) && ExactNumber::of_json(value) is None) ||
         (repr is None && (number.is_inf() || number.is_nan())) {
         Some("")
       } else {
         None
       }
-    }
     Object(fields) => {
       for name, child in fields {
         if invalid_number_path(child, depth + 1, limit) is Some(tail) {
@@ -107,7 +110,7 @@ fn number_has_repr(value : Json) -> Bool {
 // Inputs have already passed numeric/depth checks before this recursion.
 fn schema_equal(left : Json, right : Json) -> Bool raise NumericError {
   match (left, right) {
-    (Number(a, ..), Number(b, ..)) => {
+    (Number(a, ..), Number(b, ..)) =>
       if !number_has_repr(left) && !number_has_repr(right) {
         a == b
       } else {
@@ -116,7 +119,6 @@ fn schema_equal(left : Json, right : Json) -> Bool raise NumericError {
           _ => false
         }
       }
-    }
     (Object(a), Object(b)) => {
       if a.length() != b.length() {
         return false

@@ -123,17 +123,36 @@ fn compile_into(
 // Traverse schema JSON without allocating successful child pointer strings.
 // Error pointers are constructed while unwinding, after the first invalid
 // numeric value has been identified.
-fn check_schema_json(value : Json, path : String, depth : Int32, limit : Int32) -> Unit raise CompileError {
+fn check_schema_json(
+  value : Json,
+  path : String,
+  depth : Int32,
+  limit : Int32,
+) -> Unit raise CompileError {
   if invalid_schema_number_path(value, depth, limit) is Some(suffix) {
-    invalid_keyword(path + suffix, "invalid JSON number or numeric representation")
+    invalid_keyword(
+      path + suffix,
+      "invalid JSON number or numeric representation",
+    )
   }
 }
 
 ///|
-fn invalid_schema_number_path(value : Json, depth : Int32, limit : Int32) -> String? raise CompileError {
-  if depth > limit { raise CompileError::DepthLimit(limit) }
+fn invalid_schema_number_path(
+  value : Json,
+  depth : Int32,
+  limit : Int32,
+) -> String? raise CompileError {
+  if depth > limit {
+    raise CompileError::DepthLimit(limit)
+  }
   match value {
-    Number(_, ..) => if ExactNumber::of_json(value) is None { Some("") } else { None }
+    Number(_, ..) =>
+      if ExactNumber::of_json(value) is None {
+        Some("")
+      } else {
+        None
+      }
     Object(fields) => {
       for name, child in fields {
         if invalid_schema_number_path(child, depth + 1, limit) is Some(tail) {
@@ -393,7 +412,9 @@ fn compile_node(
         let (slot, name) = resolve_dynamic_ref(
           index, resource, reference, location, limit,
         )
-        if name is Some(_) { index.track_dynamic_scope = true }
+        if name is Some(_) {
+          index.track_dynamic_scope = true
+        }
         rules.push(DynamicRef(slot, name))
       }
       // Resource identity keywords were validated and registered by the

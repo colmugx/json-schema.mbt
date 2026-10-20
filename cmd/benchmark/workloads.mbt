@@ -179,6 +179,7 @@ fn fixed_group(
       {
         document,
         resources: Map([]),
+        registry: None,
         compiled: @schema.Schema::compile(document),
         instances,
       },

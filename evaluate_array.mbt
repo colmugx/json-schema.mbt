@@ -97,12 +97,18 @@ fn evaluate_array(
     }
     if plan.unique {
       let duplicate = if unique_kind == 1 {
-        let key = match child { String(text) => text, _ => abort("unique kind") }
+        let key = match child {
+          String(text) => text
+          _ => abort("unique kind")
+        }
         let duplicate = seen.contains(key)
         seen.add(key)
         duplicate
       } else if unique_kind == 2 {
-        let number = match child { Number(number, ..) => number, _ => abort("unique kind") }
+        let number = match child {
+          Number(number, ..) => number
+          _ => abort("unique kind")
+        }
         let key = if number == 0.0 { "0" } else { number.to_string() }
         let duplicate = seen.contains(key)
         seen.add(key)

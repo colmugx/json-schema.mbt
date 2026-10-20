@@ -43,7 +43,7 @@ fn evaluate(
   match plan {
     Pending => abort("uncompiled schema arena slot")
     Located(resource, inner) => {
-      let next_scope = if scope.last() == Some(resource) {
+      let next_scope = if !program.track_dynamic_scope || scope.last() == Some(resource) {
         scope
       } else {
         let next = scope.copy()

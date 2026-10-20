@@ -20,6 +20,7 @@ priv struct RefIndex {
   registry : Map[String, Int32]
   anchors : Map[Int32, Map[String, Int32]]
   mut collect_evaluated : Bool
+  mut track_dynamic_scope : Bool
   dialects : Map[String, Dialect]
   resolving_dialects : Set[String]
 }

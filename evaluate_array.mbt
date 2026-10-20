@@ -104,9 +104,7 @@ fn evaluate_array(
           String(text) => text
           _ => abort("unique kind")
         }
-        let duplicate = seen.contains(key)
-        seen.add(key)
-        duplicate
+        !seen.add_and_check(key)
       } else if unique_kind == 2 {
         let number = match child {
           Number(number, ..) => number
@@ -115,9 +113,7 @@ fn evaluate_array(
         // Core Hash[Double] normalizes signed zero and hashes the IEEE bits
         // directly. No decimal rendering or string allocation per element.
         let seen = seen_numbers.unwrap()
-        let duplicate = seen.contains(number)
-        seen.add(number)
-        duplicate
+        !seen.add_and_check(number)
       } else {
         let mut duplicate = false
         // SAFETY (Core Array::unsafe_get): index is from the outer

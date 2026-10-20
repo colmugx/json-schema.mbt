@@ -101,6 +101,7 @@ fn index_program(
     registry: Map([]),
     anchors: Map([]),
     collect_evaluated: false,
+    track_dynamic_scope: false,
     dialects: Map([]),
     resolving_dialects: Set([]),
   }

@@ -52,6 +52,7 @@ pub fn Schema::compile(
     nodes: index.nodes,
     resources: index.resources,
     collect_evaluated: index.collect_evaluated,
+    track_dynamic_scope: index.track_dynamic_scope,
   }
   for resource, metadata in index.resources {
     if metadata.dialect.meta_slot is Some(target) {
@@ -390,6 +391,7 @@ fn compile_node(
         let (slot, name) = resolve_dynamic_ref(
           index, resource, reference, location, limit,
         )
+        if name is Some(_) { index.track_dynamic_scope = true }
         rules.push(DynamicRef(slot, name))
       }
       // Resource identity keywords were validated and registered by the

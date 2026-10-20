@@ -54,8 +54,8 @@ fn check_instance_tree(
   }
   match value {
     Number(number, repr~) => {
-      if number.is_inf() || number.is_nan() ||
-        (repr is Some(_) && ExactNumber::of_json(value) is None) {
+      if (repr is Some(_) && ExactNumber::of_json(value) is None) ||
+        (repr is None && (number.is_inf() || number.is_nan())) {
         let mut path = ""
         for segment in segments { path = pointer_step(path, segment) }
         raise InvalidNumber(path~)

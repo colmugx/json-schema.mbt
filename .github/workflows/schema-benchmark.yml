@@ -5,13 +5,8 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      moon:
-        description: Moon toolchain bundle channel; exact installed versions are recorded in campaign evidence
-        required: true
-        default: 'latest'
-        type: string
       toolchain:
-        description: Required compiler version and pinned core version (mismatch fails startup)
+        description: Exact MoonBit version used for both compiler binaries and core
         required: true
         default: '0.10.14+7d59c7ec9'
         type: string
@@ -38,7 +33,7 @@ jobs:
       - name: Install toolchain bundle and pinned core
         uses: hustcer/setup-moonbit@v1.22
         with:
-          version: ${{ inputs.moon || 'latest' }}
+          version: ${{ inputs.toolchain || '0.10.14+7d59c7ec9' }}
           core-version: ${{ inputs.toolchain || '0.10.14+7d59c7ec9' }}
 
       - name: Bootstrap genuine moonx dispatcher and verify compiler
@@ -49,7 +44,13 @@ jobs:
           mkdir -p .ci-bin
           install -m 755 "$(command -v moon)" .ci-bin/moonx
           .ci-bin/moonx --help | grep -F 'Run a standalone .mbtx file'
-          moonc -v | grep -F "v${EXPECTED_COMPILER} ("
+          moon version --all
+          actual_compiler="$(moonc -v 2>&1)"
+          printf '%s\n' "$actual_compiler"
+          if ! grep -Fq "v${EXPECTED_COMPILER} (" <<< "$actual_compiler"; then
+            echo "::error::Expected moonc v${EXPECTED_COMPILER}; got: ${actual_compiler}"
+            exit 1
+          fi
           echo "$PWD/.ci-bin" >> "$GITHUB_PATH"
 
       - name: Resolve library dependencies

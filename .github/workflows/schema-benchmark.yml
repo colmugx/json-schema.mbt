@@ -1,4 +1,4 @@
-name: JSON Schema conformance and benchmark
+name: JSON Schema conformance and paired benchmark
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       smoke:
-        description: One short repetition instead of five full repetitions
+        description: One short A/B repetition instead of five full repetitions
         required: true
         default: false
         type: boolean
@@ -20,39 +20,47 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  benchmark:
+  paired-benchmark:
+    name: Paired A/B — ${{ matrix.runtime }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        runtime: [native, moonx-wasm]
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Benchmark the actual PR head, never the synthetic merge commit.
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Install latest MoonBit toolchain
         run: |
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
-          echo "$HOME/.moon/bin" >> $GITHUB_PATH
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
-      - name: Verify moonx dispatcher
-        timeout-minutes: 3
+      - name: Verify toolchain and moonx dispatcher
         run: |
           moon version --all
           moonx --help | grep -F 'Run a standalone .mbtx file'
 
-      - name: Resolve library dependencies
-        run: moon update
-      - name: Save official corpus and measure native release plus moonx Wasm
+      - name: Paired baseline and candidate on this runner
         id: campaign
-        timeout-minutes: 35
-        run: moonx benchmarks/run-campaign.mbtx ${{ inputs.smoke && 'smoke' || '' }}
-      - name: Publish summary, including incomplete execution
-        if: always() && (steps.campaign.outcome == 'success' || steps.campaign.outcome == 'failure')
-        run: moonx benchmarks/report.mbtx
-      - name: Preserve corpus, results and raw evidence even on failure
+        timeout-minutes: 42
+        env:
+          BENCH_RUNTIME: ${{ matrix.runtime }}
+          BENCH_BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'push' && github.event.before || '' }}
+          BENCH_SMOKE: ${{ inputs.smoke || 'false' }}
+        run: python3 benchmarks/paired-campaign.py
+
+      - name: Upload independent A/B evidence even on failure
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: schema-benchmark-${{ github.sha }}-${{ github.run_attempt }}
+          name: schema-paired-${{ matrix.runtime }}-${{ github.sha }}-${{ github.run_attempt }}
           path: |
-            benchmark-results/
-            !benchmark-results/_build/
+            benchmark-results/paired/
           if-no-files-found: warn
           retention-days: 30

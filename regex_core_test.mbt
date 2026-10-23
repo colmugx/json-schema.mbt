@@ -16,6 +16,10 @@ test "pattern compatibility: repeated captures preserve choice, empty and scalar
       ("^(😀+)\\1$", "😀", false),
       ("^((?:ab|cd)+)\\1$", "abcdabcd", true),
       ("^(a+)\\1$", "aaba", false),
+      // Leftmost-first backtracking is the engine's own behavior now; these
+      // previously-compilable patterns keep their ECMA results.
+      ("^(a$)\\1$", "aa", false),
+      ("^(a\\b)\\1$", "aa", false),
     ] {
     assert_eq(
       @json-schema.pattern_matches(@json-schema.compile_pattern(pattern), text),
@@ -29,14 +33,22 @@ test "pattern compatibility: Unicode categories and hexadecimal escapes" {
   for
     (pattern, text, expected) in [
       ("^\\p{General_Category=Lu}+$", "ΑB", true),
+      ("^\\p{gc=Lu}$", "A", true),
       ("^\\p{Uppercase_Letter}+$", "a", false),
       ("^[\\p{Lu}0-9]+$", "Α3", true),
       ("^\\P{Lu}+$", "中文a", true),
       ("^\\P{Lu}+$", "A", false),
+      // Negated properties inside classes are engine-native.
+      ("^[\\P{Lu}]+$", "中文a", true),
+      ("^[\\P{Lu}]+$", "A", false),
       ("^\\x41$", "A", true),
       ("^[\\x41-\\x43]+$", "ABC", true),
       ("^\\v$", "\u{000B}", true),
       ("^[\\v]$", "\u{000B}", true),
+      // ECMA-262 empty classes: `[]` never matches, `[^]` matches everything.
+      ("^[]$", "a", false),
+      ("^[^]$", "a", true),
+      ("^[^]$", "\n", true),
     ] {
     assert_eq(
       @json-schema.pattern_matches(@json-schema.compile_pattern(pattern), text),
@@ -49,8 +61,11 @@ test "pattern compatibility: Unicode categories and hexadecimal escapes" {
 test "pattern compatibility: unsupported features remain explicit errors" {
   for
     pattern in [
-      "(a)\\1", "^(a)(b)\\2$", "^(a$)\\1$", "^(a\\b)\\1$", "\\p{Script=Greek}", "[\\P{Lu}]",
-      "\\xZZ",
+      // The engine implements General_Category only; scripts and binary
+      // properties are typed engine rejections, never silent non-matches.
+      "\\p{Script=Greek}", "\\p{Alphabetic}", "\\p{gc}",
+      // Malformed escapes.
+       "\\xZZ",
     ] {
     let support = @json-schema.compile_pattern(pattern)
     assert_true(support is Unsupported(..), msg=pattern)

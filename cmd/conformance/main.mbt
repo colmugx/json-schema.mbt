@@ -151,26 +151,14 @@ fn execute(options : Options) -> Int32 raise {
           "case_description": Json::string(case_description),
           "expected": Json::boolean(expected),
         }
-        let status = match compiled {
-          Ok(schema) => {
-            // Validation exceptions are harness/runtime failures, not silently
-            // interpreted as false. Only known schema compile gaps are scored.
-            let actual = schema.valid(value)
-            let diagnostics_agree = schema.faults(value).is_empty() == actual
-            guard diagnostics_agree else {
-              fail("valid/faults disagreement: " + id)
-            }
-            result.set("actual", Json::boolean(actual))
-            if actual == expected {
-              "pass"
-            } else {
-              "mismatch"
-            }
-          }
-          Err(error) => {
-            result.set("message", Json::string("\{Repr(error)}"))
-            compile_status(error)
-          }
+        let (status, actual, message) = evaluate_case(
+          compiled, value, expected, id,
+        )
+        if actual is Some(actual) {
+          result.set("actual", Json::boolean(actual))
+        }
+        if message is Some(message) {
+          result.set("message", Json::string(message))
         }
         result.set("status", Json::string(status))
         totals[category].record(status)
@@ -239,7 +227,7 @@ fn execute(options : Options) -> Int32 raise {
 
 ///|
 fn main {
-  let status = execute(options(@env.args())) catch {
+  let status = execute(options(command_arguments())) catch {
     error => {
       println("HARNESS ERROR: \{error}")
       2

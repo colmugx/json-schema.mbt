@@ -8,4 +8,11 @@ import {
 
 pkgtype(kind: "executable")
 
-supported_targets = "native"
+supported_targets = "native + js + wasm"
+
+options(
+  targets: {
+    "arguments.mbt": [ "native", "wasm" ],
+    "arguments_js.mbt": [ "js" ],
+  },
+)

@@ -1,4 +1,21 @@
 ///|
+test "runner: numeric budgets are unsupported rather than malformed schemas" {
+  assert_eq(
+    compile_status(@schema.CompileError::NumericBudget(path="/maximum")),
+    "unsupported",
+  )
+  assert_eq(
+    compile_status(
+      @schema.CompileError::InvalidKeyword(
+        path="/maximum",
+        reason="invalid number",
+      ),
+    ),
+    "rejected",
+  )
+}
+
+///|
 test "runner: every instance has one status and remains in denominator" {
   let counts = Counts()
   for status in ["pass", "mismatch", "unsupported", "rejected"] {

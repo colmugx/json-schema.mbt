@@ -31,7 +31,7 @@ priv enum Rule {
   Lower(ExactNumber, Bool, String)
   Upper(ExactNumber, Bool, String)
   Multiple(ExactNumber, String)
-  StringLength(Int32?, Int32?, String)
+  StringLength(CountBound?, CountBound?, String)
   Pattern(PatternSupport, String)
   Objects(ObjectPlan)
   Arrays(ArrayPlan)
@@ -59,8 +59,8 @@ priv struct ObjectPlan {
   additional : Plan?
   required : Array[String]
   names : Plan?
-  minimum : Int32?
-  maximum : Int32?
+  minimum : CountBound?
+  maximum : CountBound?
   dependent_required : Array[(String, Array[String])]
   dependent_schemas : Array[(String, Plan)]
 }
@@ -71,10 +71,10 @@ priv struct ArrayPlan {
   prefix : Array[Plan]
   items : Plan?
   contains : Plan?
-  min_contains : Int32
-  max_contains : Int32?
-  minimum : Int32?
-  maximum : Int32?
+  min_contains : CountBound
+  max_contains : CountBound?
+  minimum : CountBound?
+  maximum : CountBound?
   unique : Bool
 }
 

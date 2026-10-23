@@ -52,7 +52,7 @@ fn evaluate_array(
   } else {
     None
   }
-  if plan.minimum is Some(bound) && values.length() < bound {
+  if plan.minimum is Some(bound) && bound.above(values.length()) {
     valid = fail(
       failures,
       path,
@@ -64,7 +64,7 @@ fn evaluate_array(
       return false
     }
   }
-  if plan.maximum is Some(bound) && values.length() > bound {
+  if plan.maximum is Some(bound) && bound.below(values.length()) {
     valid = fail(
       failures,
       path,
@@ -176,7 +176,7 @@ fn evaluate_array(
   }
   if plan.contains is Some(_) {
     let mut contains_valid = true
-    if matches < plan.min_contains {
+    if plan.min_contains.above(matches) {
       valid = fail(
         failures,
         path,
@@ -189,7 +189,7 @@ fn evaluate_array(
         return false
       }
     }
-    if plan.max_contains is Some(bound) && matches > bound {
+    if plan.max_contains is Some(bound) && bound.below(matches) {
       valid = fail(
         failures,
         path,

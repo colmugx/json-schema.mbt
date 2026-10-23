@@ -12,7 +12,7 @@ fn evaluate_object(
 ) -> Bool raise {
   guard value is Object(fields) else { return true }
   let mut valid = true
-  if plan.minimum is Some(bound) && fields.length() < bound {
+  if plan.minimum is Some(bound) && bound.above(fields.length()) {
     valid = fail(
       failures,
       path,
@@ -24,7 +24,7 @@ fn evaluate_object(
       return false
     }
   }
-  if plan.maximum is Some(bound) && fields.length() > bound {
+  if plan.maximum is Some(bound) && bound.below(fields.length()) {
     valid = fail(
       failures,
       path,

@@ -7,7 +7,6 @@ pub struct CompiledPattern {
   priv expression : @regexp.Regexp
   priv assertions : Array[(Bool, @regexp.Regexp)]
   priv anchored : Bool
-  priv repeated_capture : Bool
 }
 
 ///|
@@ -25,9 +24,6 @@ pub(all) suberror PatternError {
 pub extend PatternError with @debug.Debug::{to_repr}
 
 ///|
-const ECMA_WS : String = " \\t\\n\\v\\f\\r\\u{00A0}\\u{1680}\\u{2000}-\\u{200A}\\u{2028}\\u{2029}\\u{202F}\\u{205F}\\u{3000}\\u{FEFF}"
-
-///|
 fn char_at(source : String, index : Int32) -> Char {
   source.get_char(index).unwrap_or_else(() => source[index].unsafe_to_char())
 }
@@ -42,25 +38,15 @@ fn char_width(c : Char) -> Int32 {
 }
 
 ///|
-#deprecated("Temporary ECMA classes: recheck moonbitlang/regexp before removing", skip_current_package=true)
-fn shorthand(c : Char, in_class : Bool) -> String? raise PatternError {
-  let content = match c {
-    'd' => "0-9"
-    'w' => "A-Za-z0-9_"
-    's' => ECMA_WS
-    'D' | 'W' | 'S' => {
-      if in_class {
-        raise NotSupported("negated shorthand inside a class is not supported")
-      }
-      match c {
-        'D' => return Some("[^0-9]")
-        'W' => return Some("[^A-Za-z0-9_]")
-        _ => return Some("[^\{ECMA_WS}]")
-      }
-    }
-    _ => return None
-  }
-  Some(if in_class { content } else { "[" + content + "]" })
+/// Two lowercase hexadecimal digits for a control code point (0..=0x1F).
+fn control_hex(code : Int32) -> String {
+  let digits = "0123456789abcdef"
+  let high = (code >> 4) & 0xF
+  let low = code & 0xF
+  let builder = StringBuilder()
+  builder.write_char(digits[high].unsafe_to_char())
+  builder.write_char(digits[low].unsafe_to_char())
+  builder.to_string()
 }
 
 ///|
@@ -74,7 +60,7 @@ fn translate(pattern : String) -> String raise PatternError {
     if c == '\\' && index + 1 < pattern.length() {
       let next = char_at(pattern, index + 1)
       if next == 'p' || next == 'P' {
-        let (replacement, after) = unicode_property(pattern, index, in_class)
+        let (replacement, after) = unicode_property(pattern, index)
         output.write_string(replacement)
         index = after
         continue
@@ -93,28 +79,34 @@ fn translate(pattern : String) -> String raise PatternError {
         index += 4
         continue
       }
-      if next is ('0'..<='9') || next == 'k' {
-        raise NotSupported(
-          "backreferences outside the anchored repeated-capture profile are unsupported",
-        )
-      }
-      if in_class &&
-        (next == 'd' || next == 'w' || next == 's') &&
-        (
-          (index > 0 && char_at(pattern, index - 1) == '-') ||
-          (index + 2 < pattern.length() && char_at(pattern, index + 2) == '-')
-        ) {
-        raise NotSupported(
-          "shorthand classes used as range endpoints are not supported",
-        )
-      }
-      match shorthand(next, in_class) {
-        Some(replacement) => output.write_string(replacement)
-        None => {
-          output.write_char('\\')
-          output.write_char(next)
+      if next == 'c' {
+        guard index + 2 < pattern.length() else {
+          raise NotSupported("incomplete control escape")
         }
+        let letter = char_at(pattern, index + 2)
+        // ECMA-262 ClassControlLetter: `\c` plus exactly one ASCII letter.
+        // The engine reserves `\c` as an error, so the adapter maps the letter
+        // to its control code point. Non-letters stay typed-unsupported
+        // instead of guessing between Annex B literal `c` and a SyntaxError.
+        guard letter is ('A'..<='Z' | 'a'..<='z') else {
+          raise NotSupported(
+            "\\c control escapes require an ASCII letter operand",
+          )
+        }
+        let upper = if letter is ('A'..<='Z') {
+          letter.to_int()
+        } else {
+          letter.to_int() - 32
+        }
+        output.write_string("\\u00" + control_hex(upper & 0x1F))
+        index += 3
+        continue
       }
+      // Backreferences (\1..\9, \k<name>), shorthand classes, identity escapes
+      // and control character escapes pass through: the engine implements them
+      // or rejects them as a typed compile error.
+      output.write_char('\\')
+      output.write_char(next)
       index += 1 + char_width(next)
       continue
     }
@@ -131,12 +123,9 @@ fn translate(pattern : String) -> String raise PatternError {
         pattern[index:].has_prefix("(?<!") {
         raise NotSupported("lookbehind is not supported")
       }
-      if !pattern[index:].has_prefix("(?:") &&
-        !pattern[index:].has_prefix("(?<") {
-        raise NotSupported(
-          "inline regexp flags are outside the supported profile",
-        )
-      }
+      // Other `(?...` forms (named groups, scoped flag groups) pass through;
+      // the engine rejects dialect-invalid forms such as global inline flags
+      // and Python/PCRE groups as typed compile errors.
     }
     if !in_class && c == '.' {
       output.write_string("[^\\n\\r\\u{2028}\\u{2029}]")
@@ -218,19 +207,16 @@ fn has_top_alternative(pattern : String) -> Bool {
 }
 
 ///|
-/// Unanchored search semantics. Supports ordinary regexp.mbt patterns with
-/// ECMA digit/word/whitespace rewrites and a precise leading lookahead chain.
-/// Other lookarounds and ambiguous rewrites are explicit unsupported errors.
+/// Unanchored search semantics. Patterns are passed to the regexp engine after
+/// only the rewrites the engine lacks (see `translate`): the ECMA dot
+/// line-terminator class, `\xHH` and `\cX` escapes, and General_Category
+/// property-name normalization. Backreferences, named groups, scoped flag
+/// groups and shorthand classes use the engine's own ECMA semantics, and
+/// dialect-invalid syntax surfaces as a typed `Unsupported` result. A leading
+/// anchored positive/negative lookahead chain is evaluated with separate
+/// compiled expressions; other lookarounds are explicit unsupported errors.
 pub fn compile_pattern(pattern : String) -> PatternSupport {
   try {
-    if repeated_capture_body(pattern) is Some(body) {
-      return Supported({
-        expression: @regexp.compile("^(?:" + translate(body) + ")$"),
-        assertions: [],
-        anchored: true,
-        repeated_capture: true,
-      })
-    }
     let anchored = pattern.has_prefix("^")
     let mut offset = if anchored { 1 } else { 0 }
     let assertions : Array[(Bool, @regexp.Regexp)] = []
@@ -260,7 +246,7 @@ pub fn compile_pattern(pattern : String) -> PatternSupport {
       }
       @regexp.compile("^(?:" + translate(tail) + ")")
     }
-    Supported({ expression, assertions, anchored, repeated_capture: false, })
+    Supported({ expression, assertions, anchored, })
   } catch {
     NotSupported(reason) => Unsupported(reason~)
     _ => Unsupported(reason="pattern rejected by the regexp engine")
@@ -285,11 +271,7 @@ pub fn pattern_matches(
           return false
         }
       }
-      if compiled.repeated_capture {
-        repeated_capture_matches(compiled.expression, text)
-      } else {
-        compiled.expression.execute(text).matched()
-      }
+      compiled.expression.execute(text).matched()
     }
   }
 }

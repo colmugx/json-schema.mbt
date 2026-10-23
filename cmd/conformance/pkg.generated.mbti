@@ -1,0 +1,15 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "colmugx/json-schema/cmd/conformance"
+
+// Values
+
+// Errors
+
+// Types and methods
+type Counts
+
+type Options
+
+// Type aliases
+
+// Traits

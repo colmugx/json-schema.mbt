@@ -21,6 +21,7 @@ pub(all) suberror CompileError {
   UnsupportedKeyword(path~ : String, keyword~ : String)
   UnsupportedPattern(path~ : String, pattern~ : String, reason~ : String)
   DepthLimit(Int32)
+  NumericBudget(path~ : String)
 } derive(@debug.Debug)
 pub fn CompileError::to_repr(Self) -> @debug.Repr
 

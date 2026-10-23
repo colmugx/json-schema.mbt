@@ -6,6 +6,11 @@ pub(all) suberror CompileError {
   UnsupportedKeyword(path~ : String, keyword~ : String)
   UnsupportedPattern(path~ : String, pattern~ : String, reason~ : String)
   DepthLimit(Int32)
+  /// A well-formed JSON number whose exponent or decimal scale leaves the
+  /// ±100000 exact-arithmetic budget. This is a validator resource limit, not
+  /// a malformed number: shrink the exponent/scale instead of rewording the
+  /// literal. The path locates the offending number in the schema document.
+  NumericBudget(path~ : String)
 } derive(Debug)
 
 ///|

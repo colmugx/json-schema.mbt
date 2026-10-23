@@ -7,7 +7,10 @@ A compile-once JSON Schema validator for MoonBit, built around **precise
 Static and dynamic references, resource identifiers and anchors, and
 `unevaluatedProperties`/`unevaluatedItems` are supported. Cross-resource references
 use an explicit preloaded registry: the compiler and validator never fetch URIs.
-Custom dialects and vocabulary negotiation remain outside the supported profile.
+Custom dialects can combine recognized standard vocabularies and enforce their
+metaschemas; unknown required vocabularies fail compilation. This is not a general
+plugin API for arbitrary vocabulary execution. Current profile boundaries and
+reproduced evidence are maintained in [the conformance contract](CONFORMANCE.md).
 
 ## Use it for
 
@@ -143,16 +146,17 @@ unsupported error, not an ignored assertion.
 
 ## Evidence and development
 
-The full pinned official draft2020-12 corpus reports **1292/1301** standard
-cases matched: **0 mismatches, 0 unsupported, 9 rejected**. The remaining
-rejections involve unprovided official metaschema resources and custom dialects/
-vocabularies. Targeted files match **31/31** remote-reference, **8/8** anchor,
-**44/44** dynamic-reference, **129/129** unevaluated-property and **71/71**
-unevaluated-item cases. Optional cases are separate: **547/1036** matched,
-**480 mismatches, 4 unsupported, 5 rejected**; format assertions are not enabled.
-This is visible progress toward conformance, **not a complete-draft claim**.
-Unsupported and rejected cases stay in the denominator. Results use the pin in
-`benchmarks/suite.json` and are recorded in `benchmark-results/conformance.json`.
+The completion-roadmap baseline was reproduced on actual native, JS and Wasm
+execution: **1301/1301** standard cases, with **0 mismatches, 0 unsupported and
+0 rejected**. Optional annotation-mode results were **547/1036**: 480 mismatches,
+6 unsupported and 3 rejected. This baseline is not a complete-draft claim and is
+not silently relabeled as evidence for later implementation changes.
+
+Use [the conformance contract](CONFORMANCE.md) for the current evidence
+entry point, exact provenance, profile distinctions and case-level gap accounting.
+Unsupported/rejected cases remain in their original denominator. Historical
+`benchmark-results/conformance.json` and `conformance-dialects.json` are historical
+snapshots, not automatically the newest checkout's acceptance result.
 
 Run these commands from this independent module's root:
 
@@ -198,9 +202,11 @@ package runners can be invoked with `moon run`.
 
 Correctness comes first. Compilation hoists schema parsing and regular-expression
 compilation out of repeated validation; object checks share a property walk.
-The current implementation still performs a numeric/depth preflight and uses a
-quadratic exact-equality check for `uniqueItems`. It does **not** yet claim to be
-the fastest validator. Performance claims require reproducible benchmarks,
+The implementation retains numeric/depth preflight. `uniqueItems` uses exact
+pairwise equality generally, with specialized set-based paths for eligible
+homogeneous constructed primitive arrays. Precision-bearing and structured values
+retain their exact comparison semantics. It does **not** claim to be the fastest
+validator. Performance claims require reproducible benchmarks,
 representative valid/invalid cases and the same semantics on both sides.
 
 ## License

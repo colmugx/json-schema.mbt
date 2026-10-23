@@ -122,14 +122,20 @@ fn compile_into(
 ///|
 // Traverse schema JSON without allocating successful child pointer strings.
 // Error pointers are constructed while unwinding, after the first invalid
-// numeric value has been identified.
+// numeric value has been identified. A well-formed literal beyond the
+// ±100000 arithmetic budget is reported as `NumericBudget` — a validator
+// resource limit — while every other numeric failure stays an invalid
+// representation.
 fn check_schema_json(
   value : Json,
   path : String,
   depth : Int32,
   limit : Int32,
 ) -> Unit raise CompileError {
-  if invalid_schema_number_path(value, depth, limit) is Some(suffix) {
+  if invalid_schema_number_path(value, depth, limit) is Some((suffix, budget)) {
+    if budget {
+      raise NumericBudget(path=path + suffix)
+    }
     invalid_keyword(
       path + suffix,
       "invalid JSON number or numeric representation",
@@ -142,29 +148,35 @@ fn invalid_schema_number_path(
   value : Json,
   depth : Int32,
   limit : Int32,
-) -> String? raise CompileError {
+) -> (String, Bool)? raise CompileError {
   if depth > limit {
     raise CompileError::DepthLimit(limit)
   }
   match value {
-    Number(_, ..) =>
+    Number(_, repr~) =>
       if ExactNumber::of_json(value) is None {
-        Some("")
+        let budget = match repr {
+          Some(text) => parse_parts(text) is BudgetExceeded
+          None => false
+        }
+        Some(("", budget))
       } else {
         None
       }
     Object(fields) => {
       for name, child in fields {
-        if invalid_schema_number_path(child, depth + 1, limit) is Some(tail) {
-          return Some(pointer_step("", name) + tail)
+        if invalid_schema_number_path(child, depth + 1, limit)
+          is Some((tail, budget)) {
+          return Some((pointer_step("", name) + tail, budget))
         }
       }
       None
     }
     Array(values) => {
       for index, child in values {
-        if invalid_schema_number_path(child, depth + 1, limit) is Some(tail) {
-          return Some("/" + index.to_string() + tail)
+        if invalid_schema_number_path(child, depth + 1, limit)
+          is Some((tail, budget)) {
+          return Some(("/" + index.to_string() + tail, budget))
         }
       }
       None
@@ -193,11 +205,21 @@ fn compile_number(
 }
 
 ///|
+/// Compile one nonnegative integer count bound (`minLength`, `maxLength`,
+/// `minItems`, `maxItems`, `minProperties`, `maxProperties`, `minContains`,
+/// `maxContains`) without an `Int32` ceiling. The bound keeps its exact
+/// decimal form, so `2147483648` and `1e100000` compile like any other count
+/// and no `Double` truncation participates. Fractional or negative bounds
+/// stay `InvalidKeyword`; a well-formed literal beyond the ±100000
+/// exact-arithmetic budget is rejected earlier as `NumericBudget` (a
+/// resource limit, not an invalid number). Accepting a huge bound never
+/// promises the instance resources to reach it: comparisons against actual
+/// lengths are exact and decide by digit width.
 fn compile_count(
   fields : Map[String, Json],
   key : String,
   path : String,
-) -> Int32? raise CompileError {
+) -> CountBound? raise CompileError {
   match fields.get(key) {
     None => None
     Some(value) => {
@@ -220,23 +242,15 @@ fn compile_count(
       if !integer || sign < 0 {
         invalid_keyword(location, "expected a nonnegative integer")
       }
-      let ordering = number.compare(ExactNumber::from_double(2147483647.0)) catch {
-        _ =>
-          raise InvalidKeyword(
-            path=location,
-            reason="invalid numeric representation",
-          )
-      }
-      if ordering > 0 {
-        raise UnsupportedKeyword(
-          path=location,
-          keyword="count exceeds supported range",
-        )
-      }
-      match value {
-        Number(d, ..) => Some(d.to_int())
-        _ => None
-      }
+      Some(
+        CountBound::of_exact(number) catch {
+          _ =>
+            raise InvalidKeyword(
+              path=location,
+              reason="invalid numeric representation",
+            )
+        },
+      )
     }
   }
 }
@@ -760,7 +774,9 @@ fn compile_node(
     contains: optional_node(
       index, doc, resource, fields, "contains", path, depth, limit,
     ),
-    min_contains: compile_count(fields, "minContains", path).unwrap_or(1),
+    min_contains: compile_count(fields, "minContains", path).unwrap_or(
+      CountBound::of_int(1),
+    ),
     max_contains: compile_count(fields, "maxContains", path),
     minimum: compile_count(fields, "minItems", path),
     maximum: compile_count(fields, "maxItems", path),

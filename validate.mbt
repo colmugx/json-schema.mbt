@@ -260,7 +260,7 @@ fn evaluate_rule(
       guard value is String(text) else { return true }
       let length = text.char_length()
       let mut valid = true
-      if minimum is Some(bound) && length < bound {
+      if minimum is Some(bound) && bound.above(length) {
         valid = fail(
           failures,
           path,
@@ -272,7 +272,7 @@ fn evaluate_rule(
           return false
         }
       }
-      if maximum is Some(bound) && length > bound {
+      if maximum is Some(bound) && bound.below(length) {
         valid = fail(
           failures,
           path,

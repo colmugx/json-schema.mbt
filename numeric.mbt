@@ -58,13 +58,26 @@ priv struct Parts {
 }
 
 ///|
+/// Outcome of lexing a JSON number literal. `MalformedLiteral` violates the
+/// JSON number grammar; `BudgetExceeded` is a well-formed literal whose
+/// decimal scale leaves the ±100000 exact-arithmetic budget. The distinction
+/// lets callers report a resource limit instead of an invalid number.
+priv enum PartsResult {
+  Parsed(Parts)
+  MalformedLiteral
+  BudgetExceeded
+}
+
+///|
 /// Lex a JSON number literal into (coefficient digits, decimal exponent of
-/// the last digit). Accepts exactly the JSON number grammar.
-fn parse_parts(text : String) -> Parts? {
+/// the last digit). Accepts exactly the JSON number grammar. The coefficient
+/// keeps every written digit, so only the derived scale can leave the
+/// arithmetic budget.
+fn parse_parts(text : String) -> PartsResult {
   let s = text
   let n = s.length()
   if n == 0 {
-    return None
+    return MalformedLiteral
   }
   let mut i = 0
   let mut negative = false
@@ -73,7 +86,7 @@ fn parse_parts(text : String) -> Parts? {
       negative = true
       i = 1
     }
-    Some('+') => return None
+    Some('+') => return MalformedLiteral
     _ => ()
   }
   let int_digits = StringBuilder()
@@ -90,12 +103,12 @@ fn parse_parts(text : String) -> Parts? {
     }
   }
   if !seen_int {
-    return None
+    return MalformedLiteral
   }
   // JSON leading-zero rule: "0" alone or "0.x" — "01" is invalid
   let ints = int_digits.to_string()
   if ints.length() > 1 && ints.get_char(0) == Some('0') {
-    return None
+    return MalformedLiteral
   }
   if i < n && s.get_char(i) == Some('.') {
     i += 1
@@ -111,7 +124,7 @@ fn parse_parts(text : String) -> Parts? {
       }
     }
     if !seen_frac {
-      return None
+      return MalformedLiteral
     }
   }
   let mut exp : Int64 = 0
@@ -139,29 +152,33 @@ fn parse_parts(text : String) -> Parts? {
           }
         }
         if digits.to_string() == "" {
-          return None
+          return MalformedLiteral
         }
+        // An exponent magnitude that cannot even be held in an Int64 is far
+        // outside the arithmetic budget, not a grammar error.
         let mag = @string.parse_int64(digits.to_string()) catch {
-          _ => return None
+          _ => return BudgetExceeded
         }
         exp = if exp_negative { -mag } else { mag }
-        if exp > 100000L || exp < -100000L {
-          return None
-        }
       }
       _ => ()
     }
   }
   if i != n {
-    return None
+    return MalformedLiteral
   }
   let fracs = frac_digits.to_string()
   let all_digits = ints + fracs
+  // The budget constrains the derived decimal scale, not the written
+  // exponent: `0.1e100001` normalizes to scale -100000 and stays exactly
+  // representable, while `1e100001` leaves the budget. Overflowing Int64
+  // arithmetic here can only wrap far outside ±100000, which the check below
+  // still classifies as a budget limit.
   let scale64 : Int64 = fracs.length().to_int64() - exp
   if scale64 > 100000L || scale64 < -100000L {
-    return None
+    return BudgetExceeded
   }
-  Some({ coeff: all_digits, scale: scale64.to_int(), negative, })
+  Parsed({ coeff: all_digits, scale: scale64.to_int(), negative, })
 }
 
 ///|
@@ -169,7 +186,7 @@ fn parse_parts(text : String) -> Parts? {
 // lexeme remains a JSON number; its repr, not the infinity placeholder, is
 // authoritative for every mathematical predicate.
 fn literal_double(text : String) -> Double? {
-  guard parse_parts(text) is Some(parts) else { return None }
+  guard parse_parts(text) is Parsed(parts) else { return None }
   Some(@string.parse_double(text)) catch {
     _ => {
       let mut leading = 0
@@ -194,7 +211,7 @@ fn literal_double(text : String) -> Double? {
 /// Interpret a decimal literal (JSON number grammar) exactly.
 pub fn ExactNumber::from_literal(text : String) -> ExactNumber? {
   match parse_parts(text) {
-    Some(parts) => {
+    Parsed(parts) => {
       let signed = if parts.negative && parts.coeff != "0" {
         "-" + parts.coeff
       } else {
@@ -204,7 +221,7 @@ pub fn ExactNumber::from_literal(text : String) -> ExactNumber? {
         coeff => Some(Repr(coeff~, scale=parts.scale))
       }
     }
-    None => None
+    MalformedLiteral | BudgetExceeded => None
   }
 }
 
@@ -395,4 +412,95 @@ pub fn ExactNumber::sign(self : ExactNumber) -> Int32 raise NumericError {
       }
     }
   }
+}
+
+///|
+/// A nonnegative integer count bound (`minItems`, `maxLength`,
+/// `minContains`, ...) kept exactly as `coefficient × 10^exponent` with
+/// `coefficient >= 0` and `exponent >= 0`. Bounds such as `1e100000` stay
+/// compact: comparing one against an instance length decides by digit width
+/// and never materializes `10^exponent`, so compiling a huge bound promises
+/// nothing about the resources an instance would need to satisfy it.
+priv struct CountBound {
+  coefficient : @bigint.BigInt
+  exponent : Int32
+}
+
+///|
+/// The largest count an `Int` instance length can report; bounds at or above
+/// the next decimal power are already decided by width.
+let count_int_max : @bigint.BigInt = @bigint.BigInt::from_int(2147483647)
+
+///|
+/// Exact conversion of a verified nonnegative integer. The caller must have
+/// checked `ExactNumber::is_integer` and `sign() >= 0` first; the defensive
+/// divisibility re-check only runs for fractional scales and stays within
+/// the ±100000 scale budget.
+fn CountBound::of_exact(number : ExactNumber) -> CountBound raise NumericError {
+  let (coeff, scale) = number.parts()
+  if coeff.is_zero() || scale <= 0 {
+    return { coefficient: coeff, exponent: if scale < 0 { -scale } else { 0 }, }
+  }
+  let divisor = decimal_power(scale)
+  guard coeff.mod(divisor).is_zero() else { raise InvalidNumber }
+  { coefficient: coeff.div(divisor), exponent: 0, }
+}
+
+///|
+/// Exact bound for a small nonnegative count (the `minContains` default).
+fn CountBound::of_int(count : Int32) -> CountBound {
+  guard count >= 0 else { abort("count bound must be nonnegative") }
+  { coefficient: @bigint.BigInt::from_int(count), exponent: 0, }
+}
+
+///|
+/// Exact ordering between the bound and an instance count `n` (an `Int`
+/// array/string/object length): `-1` when the bound is smaller, `1` when it
+/// is larger, `0` when equal. Bounds wider than any `Int` length decide by
+/// width alone; the remaining cases fit an `Int64` product exactly
+/// (`coefficient <= 2147483647`, `exponent <= 9`), so no decimal expansion
+/// of `10^exponent` is ever built and the comparison never raises.
+fn CountBound::compare_int(self : CountBound, n : Int32) -> Int32 {
+  // The bound is a nonnegative integer; decide zero bounds and nonpositive
+  // instance counts first.
+  if self.coefficient.is_zero() {
+    return if n < 0 { 1 } else if n == 0 { 0 } else { -1 }
+  }
+  if n <= 0 {
+    return 1
+  }
+  if self.exponent >= 10 || self.coefficient > count_int_max {
+    // The value is >= 10^10 or >= 2147483648, above every Int length.
+    return 1
+  }
+  let scaled = self.coefficient.to_int64() * pow10_int64(self.exponent)
+  let length = n.to_int64()
+  if scaled < length {
+    -1
+  } else if scaled > length {
+    1
+  } else {
+    0
+  }
+}
+
+///|
+fn pow10_int64(exponent : Int32) -> Int64 {
+  let mut result = 1L
+  for _ in 0..<exponent {
+    result *= 10L
+  }
+  result
+}
+
+///|
+/// True when the bound is above the instance count `n`.
+fn CountBound::above(self : CountBound, n : Int32) -> Bool {
+  self.compare_int(n) == 1
+}
+
+///|
+/// True when the bound is below the instance count `n`.
+fn CountBound::below(self : CountBound, n : Int32) -> Bool {
+  self.compare_int(n) == -1
 }

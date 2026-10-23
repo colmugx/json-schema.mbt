@@ -438,8 +438,11 @@ let count_int_max : @bigint.BigInt = @bigint.BigInt::from_int(2147483647)
 /// the ±100000 scale budget.
 fn CountBound::of_exact(number : ExactNumber) -> CountBound raise NumericError {
   let (coeff, scale) = number.parts()
-  if coeff.is_zero() || scale <= 0 {
-    return { coefficient: coeff, exponent: if scale < 0 { -scale } else { 0 }, }
+  if coeff.is_zero() {
+    return { coefficient: coeff, exponent: 0, }
+  }
+  if scale <= 0 {
+    return { coefficient: coeff, exponent: -scale, }
   }
   let divisor = decimal_power(scale)
   guard coeff.mod(divisor).is_zero() else { raise InvalidNumber }

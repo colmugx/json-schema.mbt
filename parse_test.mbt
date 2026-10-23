@@ -30,7 +30,8 @@ test "parse: preserve numeric lexemes recursively and last duplicate key" {
         )
     }
     try @json-schema.Schema::compile(Json::object({ "const": number })) catch {
-      @json-schema.CompileError::InvalidKeyword(..) => ()
+      @json-schema.CompileError::NumericBudget(path~) =>
+        assert_eq(path, "/const")
       error => fail("unexpected compilation failure: \{Repr(error)}")
     } noraise {
       _ =>

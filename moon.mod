@@ -17,4 +17,6 @@ description = "Compile-once JSON Schema 2020-12 validator for MoonBit: exact dec
 import {
   "moonbitlang/x@0.5.5",
   "moonbitlang/regexp@0.3.6",
+  "moonbit-community/unicode-data@0.7.1",
+  "moonbit-community/unicode-idna@0.7.1",
 }

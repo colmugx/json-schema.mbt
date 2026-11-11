@@ -4,16 +4,20 @@ package "colmugx/json-schema"
 import {
   "moonbitlang/core/bigint",
   "moonbitlang/core/debug",
+  "moonbitlang/core/json",
 }
 
 // Values
 pub fn compile_pattern(String) -> PatternSupport
 
-pub fn parse(StringView, max_nesting_depth? : Int32) -> Json raise ParseError
+pub fn format_valid(String, String) -> Bool
+
+pub fn parse(StringView, max_nesting_depth? : Int32) -> @json.Json raise ParseError
 
 pub fn pattern_matches(PatternSupport, String) -> Bool raise PatternError
 
 // Errors
+#derive(@debug.Debug)
 pub(all) suberror CompileError {
   InvalidKeyword(path~ : String, reason~ : String)
   UnknownDialect(String)
@@ -22,29 +26,33 @@ pub(all) suberror CompileError {
   UnsupportedPattern(path~ : String, pattern~ : String, reason~ : String)
   DepthLimit(Int32)
   NumericBudget(path~ : String)
-} derive(@debug.Debug)
+}
 pub fn CompileError::to_repr(Self) -> @debug.Repr
 
+#derive(@debug.Debug)
 pub(all) suberror EvaluationError {
   DepthLimit(Int32)
   InvalidNumber(path~ : String)
-} derive(@debug.Debug)
+}
 pub fn EvaluationError::to_repr(Self) -> @debug.Repr
 
+#derive(@debug.Debug)
 pub(all) suberror NumericError {
   InvalidNumber
-} derive(@debug.Debug)
+}
 pub fn NumericError::to_repr(Self) -> @debug.Repr
 
+#derive(@debug.Debug)
 pub(all) suberror ParseError {
   InvalidJson(position~ : Int32, reason~ : String)
   DepthLimit(Int32)
-} derive(@debug.Debug)
+}
 pub fn ParseError::to_repr(Self) -> @debug.Repr
 
+#derive(@debug.Debug)
 pub(all) suberror PatternError {
   NotSupported(String)
-} derive(@debug.Debug)
+}
 pub fn PatternError::to_repr(Self) -> @debug.Repr
 
 // Types and methods
@@ -62,19 +70,42 @@ pub fn ExactNumber::from_double(Double) -> Self
 pub fn ExactNumber::from_literal(String) -> Self?
 pub fn ExactNumber::is_integer(Self) -> Bool raise NumericError
 pub fn ExactNumber::multiple_of(Self, Self) -> Bool raise NumericError
-pub fn ExactNumber::of_json(Json) -> Self?
+pub fn ExactNumber::of_json(@json.Json) -> Self?
 pub fn ExactNumber::sign(Self) -> Int32 raise NumericError
 
+#derive(Eq, @debug.Debug)
 pub(all) struct Fault {
   instance_path : String
   schema_path : String
   keyword : String
   message : String
   schema_uri : String?
-} derive(Eq, @debug.Debug)
+}
 pub fn Fault::equal(Self, Self) -> Bool
 pub fn Fault::not_equal(Self, Self) -> Bool
 pub fn Fault::to_repr(Self) -> @debug.Repr
+
+pub(all) enum OutputFormat {
+  Flag
+  Basic
+  Detailed
+  Verbose
+}
+
+pub(all) struct OutputUnit {
+  valid : Bool
+  keyword_location : String
+  absolute_keyword_location : String?
+  instance_location : String
+  error : String?
+  annotation : @json.Json?
+  errors : Array[OutputUnit]
+  annotations : Array[OutputUnit]
+}
+pub fn OutputUnit::output(Self, &Logger) -> Unit
+pub fn OutputUnit::to_json(Self) -> @json.Json
+pub fn OutputUnit::to_string(Self) -> String
+pub impl Show for OutputUnit
 
 pub(all) enum PatternSupport {
   Supported(CompiledPattern)
@@ -84,9 +115,10 @@ pub(all) enum PatternSupport {
 pub struct Schema {
   // private fields
 }
-pub fn Schema::compile(Json, base_uri? : String, resources? : Map[String, Json], max_depth? : Int32) -> Self raise CompileError
-pub fn Schema::faults(Self, Json, max_depth? : Int32) -> Array[Fault] raise
-pub fn Schema::valid(Self, Json, max_depth? : Int32) -> Bool raise
+pub fn Schema::compile(@json.Json, base_uri? : String, resources? : Map[String, @json.Json], max_depth? : Int32) -> Self raise CompileError
+pub fn Schema::faults(Self, @json.Json, max_depth? : Int32) -> Array[Fault] raise
+pub fn Schema::output(Self, @json.Json, format? : OutputFormat, max_depth? : Int32) -> OutputUnit raise
+pub fn Schema::valid(Self, @json.Json, max_depth? : Int32) -> Bool raise
 
 // Type aliases
 

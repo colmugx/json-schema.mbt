@@ -19,17 +19,21 @@
 /// - `uri`, `uri-reference`, `iri`, `iri-reference` (RFC 3986 / RFC 3987) -
 ///   `format_uri.mbt`
 /// - `uri-template` (RFC 6570) - `format_uri_template.mbt`
-/// - `email`, `idn-email` (RFC 5322 / RFC 6531 address syntax) -
+/// - `email`, `idn-email` (RFC 5321 mailbox with the RFC 5322 `dot-atom` and
+///   `quoted-string` local parts, extended by RFC 6531 for `idn-email`) -
 ///   `format_email.mbt`
-/// - `hostname` (RFC 1123 LDH labels), `idn-hostname` (structural subset) -
-///   `format_host.mbt`
-/// - `regex` (ECMA-262 pattern syntax) - `format_regex.mbt`
+/// - `hostname` (RFC 1123 preferred name syntax, ASCII only), `idn-hostname`
+///   (UTS 46 ToASCII) - `format_host.mbt`, with the RFC 5892 derived property
+///   and ContextO rules in `format_idna.mbt`
+/// - `regex` (ECMA-262 pattern syntax as the module's regex profile compiles
+///   it) - `format_regex.mbt`
 ///
-/// The two internationalized host formats are the documented gaps: IDNA2008
-/// derived properties, UTS#46 mapping, the Bidi rule and ContextO/ContextJ
-/// rules need Unicode tables that this module does not carry, so `hostname`
-/// asserts only the ASCII LDH syntax (A-labels stay structurally accepted) and
-/// `idn-hostname` asserts only its table-free structural rules.
+/// The two host formats assert IDNA2008 as the official suite requires: UTS #46
+/// mapping and NFC, Punycode decoding of A-labels, the hyphen rules, the
+/// RFC 5893 Bidi rule, ContextJ, the RFC 5892 derived property with its
+/// ContextO rules, and the DNS length bounds. `hostname` additionally rejects
+/// non-ASCII spelling instead of mapping it, which is what separates it from
+/// `idn-hostname`.
 ///
 /// # Example
 ///
@@ -71,18 +75,13 @@ fn format_is_digit(ch : Char) -> Bool {
 }
 
 ///|
-fn format_is_alpha(ch : Char) -> Bool {
-  (ch is ('a'..<='z')) | ('A'..<='Z')
-}
-
-///|
 fn format_is_alnum(ch : Char) -> Bool {
-  (ch is ('0'..<='9')) | ('a'..<='z') | ('A'..<='Z')
+  ch is ('0'..<='9' | 'a'..<='z' | 'A'..<='Z')
 }
 
 ///|
 fn format_is_hex(ch : Char) -> Bool {
-  (ch is ('0'..<='9')) | ('a'..<='f') | ('A'..<='F')
+  ch is ('0'..<='9' | 'a'..<='f' | 'A'..<='F')
 }
 
 ///|

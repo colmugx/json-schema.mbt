@@ -76,6 +76,9 @@ pub impl Show for OutputUnit with fn output(self, logger) {
 }
 
 ///|
+pub extend OutputUnit with Show::{to_string, output}
+
+///|
 /// Collect the requested output format for one instance. Numeric
 /// representations and the traversal budget are checked before collection, so
 /// an invalid numeric node or exhausted depth raises instead of producing an
@@ -1409,7 +1412,7 @@ fn collect_array(
           pointer_step(plan.path, "prefixItems"),
           instance_path,
           true,
-          annotation~,
+          annotation?,
           annotations=prefix_annotations,
         ),
       )

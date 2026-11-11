@@ -14,25 +14,25 @@ priv enum FormatPart {
 ///|
 /// `uri` (RFC 3986 `URI`): an absolute URI, so a scheme is mandatory.
 fn format_uri(value : String) -> Bool {
-  format_uri_like(value, iri=false, absolute=true)
+  format_uri_like(value, false, true)
 }
 
 ///|
 /// `uri-reference` (RFC 3986 `URI-reference`, including the empty reference).
 fn format_uri_reference(value : String) -> Bool {
-  format_uri_like(value, iri=false, absolute=false)
+  format_uri_like(value, false, false)
 }
 
 ///|
 /// `iri` (RFC 3987 `IRI`): an absolute IRI, so a scheme is mandatory.
 fn format_iri(value : String) -> Bool {
-  format_uri_like(value, iri=true, absolute=true)
+  format_uri_like(value, true, true)
 }
 
 ///|
 /// `iri-reference` (RFC 3987 `IRI-reference`, including the empty reference).
 fn format_iri_reference(value : String) -> Bool {
-  format_uri_like(value, iri=true, absolute=false)
+  format_uri_like(value, true, false)
 }
 
 ///|

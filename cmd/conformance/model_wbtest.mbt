@@ -70,9 +70,14 @@ test "runner: remote mappings are distinct and workspace relative" {
 
 ///|
 test "runner: explicit format mode cannot silently enable an unimplemented profile" {
-  assert_eq(options(["runner", "--format-mode", "annotation"]).output, "benchmark-results/conformance.json")
+  assert_eq(
+    options(["runner", "--format-mode", "annotation"]).output,
+    "benchmark-results/conformance.json",
+  )
   for mode in ["assertion", "unknown"] {
-    try options(["runner", "--format-mode", mode]) catch { _ => () } noraise {
+    try options(["runner", "--format-mode", mode]) catch {
+      _ => ()
+    } noraise {
       _ => fail("unsupported format profile must fail explicitly")
     }
   }

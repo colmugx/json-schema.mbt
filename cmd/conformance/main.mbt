@@ -25,6 +25,11 @@ fn options(args : Array[String]) -> Options raise {
       "--file" => file = Some(value)
       "--group" => group = Some(@string.parse_int(value))
       "--case" => case_index = Some(@string.parse_int(value))
+      "--format-mode" => {
+        guard value == "annotation" else {
+          fail("format profile is not implemented: " + value)
+        }
+      }
       _ => fail("unknown option: " + args[index])
     }
   }
@@ -210,7 +215,7 @@ fn execute(options : Options) -> Int32 raise {
     "counts": Json::object(counts_json),
     "cases": Json::array(records),
     "groups": Json::array(groups_report),
-    "optional_format_mode": "annotations_only; format assertion not implemented",
+    "format_mode": "annotation",
   }
   @fs.write_string_to_file(options.output, report.stringify(indent=2))
   let standard = totals["standard"]

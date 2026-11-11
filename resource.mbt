@@ -356,6 +356,7 @@ fn make_resource(
           index.resources[index.resource_of[index.docs[doc].slots[""]]].document_uri
         }
     },
+    root_pointer: pointer,
     dynamic_anchors: Map([]),
     dialect,
   })

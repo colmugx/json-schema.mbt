@@ -113,10 +113,10 @@ fn compile_into(
   let plan = compile_node(index, doc, resource, document, path, depth, limit)
   if slots.contains(path) {
     let slot = slots[path]
-    index.nodes[slot] = Located(resource, plan)
+    index.nodes[slot] = Located(resource, path, plan)
     index.visited[slot] = true
   }
-  Located(resource, plan)
+  Located(resource, path, plan)
 }
 
 ///|
@@ -395,6 +395,10 @@ fn compile_node(
     index.resources[resource].dialect,
   )
   let rules : Array[Rule] = []
+  // Annotation-producing keywords are recorded, never asserted. They are
+  // emitted by an explicit output collection and only when this schema
+  // object is valid; ordinary validation skips the rule entirely.
+  let annotations : Array[Annotation] = []
   // `unevaluated*` assertions must observe every other keyword's evaluation,
   // so their rules compile like the rest but append after all of them.
   let mut unevaluated_properties : (Plan, String)? = None
@@ -592,24 +596,38 @@ fn compile_node(
       | "$comment"
       | "format"
       | "contentEncoding"
-      | "contentMediaType" =>
+      | "contentMediaType" => {
         if !(value is String(_)) {
           invalid_keyword(location, "expected a string annotation")
         }
-      "deprecated" | "readOnly" | "writeOnly" =>
+        if key != "$comment" {
+          annotations.push({ location, value: owned_json(value) })
+        }
+      }
+      "default" => annotations.push({ location, value: owned_json(value) })
+      "deprecated" | "readOnly" | "writeOnly" => {
         if value != Json::boolean(true) && value != Json::boolean(false) {
           invalid_keyword(location, "expected a boolean annotation")
         }
-      "examples" =>
+        annotations.push({ location, value: owned_json(value) })
+      }
+      "examples" => {
         if !(value is Array(_)) {
           invalid_keyword(location, "expected an array annotation")
         }
-      "contentSchema" =>
+        annotations.push({ location, value: owned_json(value) })
+      }
+      "contentSchema" => {
         ignore(
           compile_into(index, doc, resource, value, location, depth + 1, limit),
         )
+        annotations.push({ location, value: owned_json(value) })
+      }
       _ => ()
     }
+  }
+  if !annotations.is_empty() {
+    rules.push(Annotations(annotations))
   }
   let min_length = compile_count(fields, "minLength", path)
   let max_length = compile_count(fields, "maxLength", path)

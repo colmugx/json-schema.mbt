@@ -42,7 +42,7 @@ fn evaluate(
   }
   match plan {
     Pending => abort("uncompiled schema arena slot")
-    Located(resource, inner) => {
+    Located(resource, _, inner) => {
       let next_scope = if !program.track_dynamic_scope ||
         scope.last() == Some(resource) {
         scope
@@ -95,7 +95,8 @@ fn evaluate(
       // Unevaluated applicators depend on every adjacent in-place applicator,
       // never on the insertion order of the schema object's members.
       for rule in rules {
-        if rule is (UnevaluatedProperties(_, _) | UnevaluatedItems(_, _)) {
+        if rule
+          is (Annotations(_) | UnevaluatedProperties(_, _) | UnevaluatedItems(_, _)) {
           continue
         }
         if !evaluate_rule(

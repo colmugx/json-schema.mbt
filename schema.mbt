@@ -11,20 +11,37 @@ priv enum ValueType {
 
 ///|
 /// `Located` wraps every compiled schema node with the index of the schema
-/// resource it belongs to. The arena (`Program.nodes`) stores `Located`
-/// nodes, so evaluation can always recover the resource identity — and from
-/// it the source document URI — of the plan it is standing in. Nested plans
+/// resource it belongs to and the node's canonical pointer within its source
+/// document. The arena (`Program.nodes`) stores `Located` nodes, so evaluation
+/// can always recover the resource identity — and from it the source document
+/// URI — of the plan it is standing in, and output collectors can report a
+/// keyword location without threading the path separately. Nested plans
 /// (branches, property schemas, ref targets) are `Located` too.
 priv enum Plan {
   Pending
   Accept
   Reject(String)
   Rules(Array[Rule])
-  Located(Int32, Plan)
+  Located(Int32, String, Plan)
+}
+
+///|
+/// One compiled annotation keyword. Annotations never assert anything; they
+/// are recorded so an explicit output collection can report the keyword's
+/// value (`title`, `default`, `readOnly`, `format`, ...) when the surrounding
+/// schema object is valid.
+priv struct Annotation {
+  location : String
+  value : Json
 }
 
 ///|
 priv enum Rule {
+  /// Recorded annotation-producing keywords (`title`, `description`,
+  /// `default`, `deprecated`, `readOnly`, `writeOnly`, `examples`, `format`,
+  /// `contentEncoding`, `contentMediaType`, `contentSchema`). Assertion
+  /// evaluation skips this rule; only output collection observes it.
+  Annotations(Array[Annotation])
   Types(Array[ValueType], String)
   Constant(Json, String)
   Enumeration(Array[Json], String)
@@ -84,11 +101,15 @@ priv struct ArrayPlan {
 /// resource calls itself (`None` only for an anonymous root document).
 /// `document_uri` identifies the source document the resource was supplied
 /// in, so a schema pointer (which is relative to that document) can be made
-/// absolute by appending it to `document_uri`. `dynamic_anchors` maps
-/// `$dynamicAnchor` names to arena slots for `$dynamicRef` bookending.
+/// absolute by appending it to `document_uri`. `root_pointer` is the
+/// resource root's pointer within that document, so a document-relative
+/// keyword pointer can be re-based onto the resource's canonical URI.
+/// `dynamic_anchors` maps `$dynamicAnchor` names to arena slots for
+/// `$dynamicRef` bookending.
 priv struct ResourceMeta {
   uri : String?
   document_uri : String?
+  root_pointer : String
   dynamic_anchors : Map[String, Int32]
   dialect : Dialect
 }

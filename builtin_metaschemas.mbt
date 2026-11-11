@@ -373,6 +373,24 @@ fn builtin_metaschema(uri : String) -> Json? {
         #|}
         #|
       )
+    "https://json-schema.org/draft/2020-12/meta/format-assertion" =>
+      (
+        #|{
+        #|    "$schema": "https://json-schema.org/draft/2020-12/schema",
+        #|    "$id": "https://json-schema.org/draft/2020-12/meta/format-assertion",
+        #|    "$vocabulary": {
+        #|        "https://json-schema.org/draft/2020-12/vocab/format-assertion": true
+        #|    },
+        #|    "$dynamicAnchor": "meta",
+        #|
+        #|    "title": "Format vocabulary meta-schema for assertion results",
+        #|    "type": ["object", "boolean"],
+        #|    "properties": {
+        #|        "format": { "type": "string" }
+        #|    }
+        #|}
+        #|
+      )
     _ => return None
   }
   Some(parse(text) catch { _ => abort("invalid embedded standard metaschema") })
@@ -388,6 +406,7 @@ fn builtin_metaschema_uri(uri : String) -> Bool {
     "https://json-schema.org/draft/2020-12/meta/unevaluated" => true
     "https://json-schema.org/draft/2020-12/meta/meta-data" => true
     "https://json-schema.org/draft/2020-12/meta/format-annotation" => true
+    "https://json-schema.org/draft/2020-12/meta/format-assertion" => true
     "https://json-schema.org/draft/2020-12/meta/content" => true
     _ => false
   }

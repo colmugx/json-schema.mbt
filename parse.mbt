@@ -1,8 +1,9 @@
 ///|
+#derive(Debug)
 pub(all) suberror ParseError {
   InvalidJson(position~ : Int32, reason~ : String)
   DepthLimit(Int32)
-} derive(Debug)
+}
 
 ///|
 pub extend ParseError with @debug.Debug::{to_repr}

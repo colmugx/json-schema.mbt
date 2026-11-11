@@ -16,9 +16,10 @@ pub(all) enum PatternSupport {
 }
 
 ///|
+#derive(Debug)
 pub(all) suberror PatternError {
   NotSupported(String)
-} derive(Debug)
+}
 
 ///|
 pub extend PatternError with @debug.Debug::{to_repr}

@@ -96,7 +96,9 @@ fn evaluate(
       // never on the insertion order of the schema object's members.
       for rule in rules {
         if rule
-          is (Annotations(_) | UnevaluatedProperties(_, _) | UnevaluatedItems(_, _)) {
+          is (Annotations(_)
+          | UnevaluatedProperties(_, _)
+          | UnevaluatedItems(_, _)) {
           continue
         }
         if !evaluate_rule(

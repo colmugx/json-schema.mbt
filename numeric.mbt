@@ -226,9 +226,10 @@ pub fn ExactNumber::from_literal(text : String) -> ExactNumber? {
 }
 
 ///|
+#derive(Debug)
 pub(all) suberror NumericError {
   InvalidNumber
-} derive(Debug)
+}
 
 ///|
 pub extend NumericError with @debug.Debug::{to_repr}

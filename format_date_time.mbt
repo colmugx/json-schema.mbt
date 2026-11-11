@@ -23,26 +23,21 @@ fn format_full_date(text : StringView) -> Bool {
 }
 
 ///|
-fn format_calendar_day(year : Int, month : Int, day : Int) -> Bool {
+fn format_calendar_day(year : Int32, month : Int32, day : Int32) -> Bool {
   if month < 1 || month > 12 || day < 1 {
     return false
   }
   let limit = match month {
     1 | 3 | 5 | 7 | 8 | 10 | 12 => 31
     4 | 6 | 9 | 11 => 30
-    _ =>
-      if format_is_leap_year(year) {
-        29
-      } else {
-        28
-      }
+    _ => if format_is_leap_year(year) { 29 } else { 28 }
   }
   day <= limit
 }
 
 ///|
 /// Proleptic Gregorian leap rule: divisible by 4, not by 100, unless by 400.
-fn format_is_leap_year(year : Int) -> Bool {
+fn format_is_leap_year(year : Int32) -> Bool {
   year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
 }
 
@@ -116,7 +111,7 @@ fn format_full_time(text : StringView) -> Bool {
 ///|
 /// A leap second may only be `:60` when the instant it names is 23:59:60 UTC,
 /// so the local hour/minute and the numeric offset must agree.
-fn format_leap_second(hour : Int, minute : Int, offset : Int) -> Bool {
+fn format_leap_second(hour : Int32, minute : Int32, offset : Int32) -> Bool {
   let mut utc = (hour * 60 + minute - offset) % 1440
   if utc < 0 {
     utc = utc + 1440

@@ -66,7 +66,8 @@ fn format_uri_like(value : String, iri : Bool, absolute : Bool) -> Bool {
   // are needed for `path-abempty`.
   if parsed.scheme is None && !authority_present {
     let path = parsed.path
-    if path != "" && !path.has_prefix("/") &&
+    if path != "" &&
+      !path.has_prefix("/") &&
       !format_first_segment_colon_free(path) {
       return false
     }
@@ -125,8 +126,10 @@ fn format_part_valid(text : StringView, part : FormatPart, iri : Bool) -> Bool {
     let next = text.get_char(index)
     if next is Some('%') {
       guard index + 2 < text.length() &&
-        text.get_char(index + 1) is Some(high) && format_is_hex(high) &&
-        text.get_char(index + 2) is Some(low) && format_is_hex(low) else {
+        text.get_char(index + 1) is Some(high) &&
+        format_is_hex(high) &&
+        text.get_char(index + 2) is Some(low) &&
+        format_is_hex(low) else {
         return false
       }
       index = index + 3

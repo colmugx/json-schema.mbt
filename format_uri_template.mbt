@@ -21,8 +21,10 @@ fn format_uri_template(value : String) -> Bool {
       return false
     } else if next is Some('%') {
       guard index + 2 < text.length() &&
-        text.get_char(index + 1) is Some(high) && format_is_hex(high) &&
-        text.get_char(index + 2) is Some(low) && format_is_hex(low) else {
+        text.get_char(index + 1) is Some(high) &&
+        format_is_hex(high) &&
+        text.get_char(index + 2) is Some(low) &&
+        format_is_hex(low) else {
         return false
       }
       index = index + 3
@@ -71,12 +73,7 @@ fn format_template_expression(text : StringView) -> Int32? {
         } else {
           return Some(index + 1)
         }
-      Some(',') =>
-        if varspecs == 0 {
-          return None
-        } else {
-          index = index + 1
-        }
+      Some(',') => if varspecs == 0 { return None } else { index = index + 1 }
       _ => {
         guard format_template_varspec(text, index) is Some(end) else {
           return None
@@ -104,8 +101,10 @@ fn format_template_varspec(text : StringView, start : Int32) -> Int32? {
     let next = text.get_char(index)
     if next is Some('%') {
       guard index + 2 < text.length() &&
-        text.get_char(index + 1) is Some(high) && format_is_hex(high) &&
-        text.get_char(index + 2) is Some(low) && format_is_hex(low) else {
+        text.get_char(index + 1) is Some(high) &&
+        format_is_hex(high) &&
+        text.get_char(index + 2) is Some(low) &&
+        format_is_hex(low) else {
         return None
       }
       index = index + 3
@@ -133,8 +132,10 @@ fn format_template_varspec(text : StringView, start : Int32) -> Int32? {
       let next = text.get_char(index)
       if next is Some('%') {
         guard index + 2 < text.length() &&
-          text.get_char(index + 1) is Some(high) && format_is_hex(high) &&
-          text.get_char(index + 2) is Some(low) && format_is_hex(low) else {
+          text.get_char(index + 1) is Some(high) &&
+          format_is_hex(high) &&
+          text.get_char(index + 2) is Some(low) &&
+          format_is_hex(low) else {
           return None
         }
         index = index + 3
@@ -147,7 +148,7 @@ fn format_template_varspec(text : StringView, start : Int32) -> Int32? {
   }
   if text.get_char(index) == Some(':') {
     index = index + 1
-    guard text.get_char(index) is Some(first) && first is '1'..='9' else {
+    guard text.get_char(index) is Some(first) && first is ('1'..<='9') else {
       return None
     }
     index = index + 1

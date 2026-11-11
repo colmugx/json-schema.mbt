@@ -1,4 +1,5 @@
 ///|
+#derive(Debug)
 pub(all) suberror CompileError {
   InvalidKeyword(path~ : String, reason~ : String)
   UnknownDialect(String)
@@ -11,26 +12,28 @@ pub(all) suberror CompileError {
   /// a malformed number: shrink the exponent/scale instead of rewording the
   /// literal. The path locates the offending number in the schema document.
   NumericBudget(path~ : String)
-} derive(Debug)
+}
 
 ///|
+#derive(Debug)
 pub(all) suberror EvaluationError {
   DepthLimit(Int32)
   InvalidNumber(path~ : String)
-} derive(Debug)
+}
 
 ///|
 /// One assertion failure. `schema_path` is a JSON Pointer relative to the
 /// schema document that owns the failing schema; `schema_uri` identifies that
 /// document (`None` when the document was supplied without any URI), so
 /// `schema_uri + "#" + schema_path` dereferences the failing position.
+#derive(Debug, Eq)
 pub(all) struct Fault {
   instance_path : String
   schema_path : String
   keyword : String
   message : String
   schema_uri : String?
-} derive(Debug, Eq)
+}
 
 ///|
 pub extend CompileError with @debug.Debug::{to_repr}

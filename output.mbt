@@ -63,14 +63,15 @@ pub fn OutputUnit::to_json(self : OutputUnit) -> Json {
   }
   if !self.annotations.is_empty() {
     members.set(
-      "annotations", Json::array(self.annotations.map(unit => unit.to_json())),
+      "annotations",
+      Json::array(self.annotations.map(unit => unit.to_json())),
     )
   }
   Json::object(members)
 }
 
 ///|
-pub impl Show for OutputUnit with output(self, logger) {
+pub impl Show for OutputUnit with fn output(self, logger) {
   logger.write_string(self.to_json().stringify())
 }
 
@@ -90,7 +91,13 @@ pub fn Schema::output(
     Flag => {
       // The flag format must not pay for annotation or diagnostic collection.
       let valid = evaluate(
-        self.plan, self.plan.nodes[0], value, "", None, 0, max_depth,
+        self.plan,
+        self.plan.nodes[0],
+        value,
+        "",
+        None,
+        0,
+        max_depth,
       )
       if valid {
         output_unit(self.plan, 0, "", "", true)
@@ -118,19 +125,12 @@ pub fn Schema::output(
 }
 
 ///|
-fn collect_tree(program : Program, value : Json, limit : Int32) -> OutputUnit raise {
-  collect_node(
-    program,
-    0,
-    "",
-    program.nodes[0],
-    value,
-    "",
-    0,
-    limit,
-    [],
-    None,
-  )
+fn collect_tree(
+  program : Program,
+  value : Json,
+  limit : Int32,
+) -> OutputUnit raise {
+  collect_node(program, 0, "", program.nodes[0], value, "", 0, limit, [], None)
 }
 
 ///|
@@ -201,7 +201,7 @@ fn rule_output(
   errors~ : Array[OutputUnit] = [],
   annotations~ : Array[OutputUnit] = [],
 ) -> RuleOutput {
-  { valid, errors, annotations }
+  { valid, errors, annotations, }
 }
 
 ///|
@@ -242,16 +242,8 @@ fn collect_node(
         next
       }
       collect_node(
-        program,
-        next_resource,
-        next_path,
-        inner,
-        value,
-        instance_path,
-        depth,
-        limit,
-        next_scope,
-        evaluated,
+        program, next_resource, next_path, inner, value, instance_path, depth, limit,
+        next_scope, evaluated,
       )
     }
     Accept => output_unit(program, resource, node_path, instance_path, true)
@@ -292,14 +284,7 @@ fn collect_node(
           UnevaluatedProperties(_, _) | UnevaluatedItems(_, _) => ()
           _ => {
             let result = collect_rule(
-              program,
-              resource,
-              rule,
-              value,
-              instance_path,
-              depth,
-              limit,
-              scope,
+              program, resource, rule, value, instance_path, depth, limit, scope,
               marks,
             )
             if result.valid {
@@ -318,14 +303,7 @@ fn collect_node(
           match rule {
             UnevaluatedProperties(_, _) | UnevaluatedItems(_, _) => {
               let result = collect_rule(
-                program,
-                resource,
-                rule,
-                value,
-                instance_path,
-                depth,
-                limit,
-                scope,
+                program, resource, rule, value, instance_path, depth, limit, scope,
                 marks,
               )
               if result.valid {
@@ -351,14 +329,7 @@ fn collect_node(
           annotations=metadata,
         )
       } else {
-        output_unit(
-          program,
-          resource,
-          node_path,
-          instance_path,
-          false,
-          errors~,
-        )
+        output_unit(program, resource, node_path, instance_path, false, errors~)
       }
     }
   }
@@ -386,59 +357,48 @@ fn collect_rule(
       if matches {
         rule_output(true)
       } else {
-        rule_output(
-          false,
-          errors=[
-            output_unit(
-              program,
-              resource,
-              location,
-              instance_path,
-              false,
-              error="instance has none of the permitted types",
-            ),
-          ],
-        )
+        rule_output(false, errors=[
+          output_unit(
+            program,
+            resource,
+            location,
+            instance_path,
+            false,
+            error="instance has none of the permitted types",
+          ),
+        ])
       }
     }
-    Constant(expected, location) => {
+    Constant(expected, location) =>
       if schema_equal(value, expected) {
         rule_output(true)
       } else {
-        rule_output(
-          false,
-          errors=[
-            output_unit(
-              program,
-              resource,
-              location,
-              instance_path,
-              false,
-              error="instance differs from the constant",
-            ),
-          ],
-        )
+        rule_output(false, errors=[
+          output_unit(
+            program,
+            resource,
+            location,
+            instance_path,
+            false,
+            error="instance differs from the constant",
+          ),
+        ])
       }
-    }
-    Enumeration(values, location) => {
+    Enumeration(values, location) =>
       if values.any(expected => schema_equal(value, expected)) {
         rule_output(true)
       } else {
-        rule_output(
-          false,
-          errors=[
-            output_unit(
-              program,
-              resource,
-              location,
-              instance_path,
-              false,
-              error="instance is not an enumerated value",
-            ),
-          ],
-        )
+        rule_output(false, errors=[
+          output_unit(
+            program,
+            resource,
+            location,
+            instance_path,
+            false,
+            error="instance is not an enumerated value",
+          ),
+        ])
       }
-    }
     Lower(bound, exclusive, location) => {
       guard value is Number(_, ..) else { return rule_output(true) }
       let ordering = numeric_value(value, instance_path).compare(bound)
@@ -446,19 +406,16 @@ fn collect_rule(
       if valid {
         rule_output(true)
       } else {
-        rule_output(
-          false,
-          errors=[
-            output_unit(
-              program,
-              resource,
-              location,
-              instance_path,
-              false,
-              error="number is below its lower bound",
-            ),
-          ],
-        )
+        rule_output(false, errors=[
+          output_unit(
+            program,
+            resource,
+            location,
+            instance_path,
+            false,
+            error="number is below its lower bound",
+          ),
+        ])
       }
     }
     Upper(bound, exclusive, location) => {
@@ -468,19 +425,16 @@ fn collect_rule(
       if valid {
         rule_output(true)
       } else {
-        rule_output(
-          false,
-          errors=[
-            output_unit(
-              program,
-              resource,
-              location,
-              instance_path,
-              false,
-              error="number exceeds its upper bound",
-            ),
-          ],
-        )
+        rule_output(false, errors=[
+          output_unit(
+            program,
+            resource,
+            location,
+            instance_path,
+            false,
+            error="number exceeds its upper bound",
+          ),
+        ])
       }
     }
     Multiple(divisor, location) => {
@@ -488,19 +442,16 @@ fn collect_rule(
       if numeric_value(value, instance_path).multiple_of(divisor) {
         rule_output(true)
       } else {
-        rule_output(
-          false,
-          errors=[
-            output_unit(
-              program,
-              resource,
-              location,
-              instance_path,
-              false,
-              error="number is not an exact multiple",
-            ),
-          ],
-        )
+        rule_output(false, errors=[
+          output_unit(
+            program,
+            resource,
+            location,
+            instance_path,
+            false,
+            error="number is not an exact multiple",
+          ),
+        ])
       }
     }
     StringLength(minimum, maximum, location) => {
@@ -538,30 +489,25 @@ fn collect_rule(
       if pattern_matches(pattern, text) {
         rule_output(true)
       } else {
-        rule_output(
-          false,
-          errors=[
-            output_unit(
-              program,
-              resource,
-              location,
-              instance_path,
-              false,
-              error="string does not match the pattern",
-            ),
-          ],
-        )
+        rule_output(false, errors=[
+          output_unit(
+            program,
+            resource,
+            location,
+            instance_path,
+            false,
+            error="string does not match the pattern",
+          ),
+        ])
       }
     }
     Objects(plan) =>
       collect_object(
-        program, resource, plan, value, instance_path, depth, limit, scope,
-        evaluated,
+        program, resource, plan, value, instance_path, depth, limit, scope, evaluated,
       )
     Arrays(plan) =>
       collect_array(
-        program, resource, plan, value, instance_path, depth, limit, scope,
-        evaluated,
+        program, resource, plan, value, instance_path, depth, limit, scope, evaluated,
       )
     All(branches, location) => {
       let marks = fresh_marks(evaluated is Some(_))
@@ -592,19 +538,16 @@ fn collect_rule(
         merge_marks(evaluated, marks)
         rule_output(true, annotations=branch_annotations)
       } else {
-        rule_output(
-          false,
-          errors=[
-            output_unit(
-              program,
-              resource,
-              location,
-              instance_path,
-              false,
-              errors=branch_errors,
-            ),
-          ],
-        )
+        rule_output(false, errors=[
+          output_unit(
+            program,
+            resource,
+            location,
+            instance_path,
+            false,
+            errors=branch_errors,
+          ),
+        ])
       }
     }
     Any(branches, location) => {
@@ -635,19 +578,16 @@ fn collect_rule(
       } else {
         // Speculative branches are not asserted; only the applicator failure
         // is reported, matching `Schema::faults`.
-        rule_output(
-          false,
-          errors=[
-            output_unit(
-              program,
-              resource,
-              location,
-              instance_path,
-              false,
-              error="no branch matched",
-            ),
-          ],
-        )
+        rule_output(false, errors=[
+          output_unit(
+            program,
+            resource,
+            location,
+            instance_path,
+            false,
+            error="no branch matched",
+          ),
+        ])
       }
     }
     One(branches, location) => {
@@ -677,19 +617,16 @@ fn collect_rule(
         merge_marks(evaluated, marks)
         rule_output(true, annotations=matching[0].annotations)
       } else {
-        rule_output(
-          false,
-          errors=[
-            output_unit(
-              program,
-              resource,
-              location,
-              instance_path,
-              false,
-              error="expected exactly one matching branch",
-            ),
-          ],
-        )
+        rule_output(false, errors=[
+          output_unit(
+            program,
+            resource,
+            location,
+            instance_path,
+            false,
+            error="expected exactly one matching branch",
+          ),
+        ])
       }
     }
     Negate(branch, location) => {
@@ -706,19 +643,16 @@ fn collect_rule(
         None,
       )
       if node.valid {
-        rule_output(
-          false,
-          errors=[
-            output_unit(
-              program,
-              resource,
-              location,
-              instance_path,
-              false,
-              error="negated schema matched",
-            ),
-          ],
-        )
+        rule_output(false, errors=[
+          output_unit(
+            program,
+            resource,
+            location,
+            instance_path,
+            false,
+            error="negated schema matched",
+          ),
+        ])
       } else {
         rule_output(true)
       }
@@ -785,29 +719,13 @@ fn collect_rule(
     }
     UnevaluatedProperties(schema, location) =>
       collect_unevaluated_properties(
-        program,
-        resource,
-        schema,
-        location,
-        value,
-        instance_path,
-        depth,
-        limit,
-        scope,
-        evaluated,
+        program, resource, schema, location, value, instance_path, depth, limit,
+        scope, evaluated,
       )
     UnevaluatedItems(schema, location) =>
       collect_unevaluated_items(
-        program,
-        resource,
-        schema,
-        location,
-        value,
-        instance_path,
-        depth,
-        limit,
-        scope,
-        evaluated,
+        program, resource, schema, location, value, instance_path, depth, limit,
+        scope, evaluated,
       )
   }
 }
@@ -890,34 +808,21 @@ fn collect_unevaluated_properties(
         marks.properties.add(name)
       }
     }
-    rule_output(
-      true,
-      annotations=[
-        output_unit(
-          program,
-          resource,
-          location,
-          instance_path,
-          true,
-          annotation=Json::array(applied.map(name => Json::string(name))),
-          annotations~,
-        ),
-      ],
-    )
+    rule_output(true, annotations=[
+      output_unit(
+        program,
+        resource,
+        location,
+        instance_path,
+        true,
+        annotation=Json::array(applied.map(name => Json::string(name))),
+        annotations~,
+      ),
+    ])
   } else {
-    rule_output(
-      false,
-      errors=[
-        output_unit(
-          program,
-          resource,
-          location,
-          instance_path,
-          false,
-          errors~,
-        ),
-      ],
-    )
+    rule_output(false, errors=[
+      output_unit(program, resource, location, instance_path, false, errors~),
+    ])
   }
 }
 
@@ -967,34 +872,21 @@ fn collect_unevaluated_items(
         marks.items.add(index)
       }
     }
-    rule_output(
-      true,
-      annotations=[
-        output_unit(
-          program,
-          resource,
-          location,
-          instance_path,
-          true,
-          annotation=Json::boolean(true),
-          annotations~,
-        ),
-      ],
-    )
+    rule_output(true, annotations=[
+      output_unit(
+        program,
+        resource,
+        location,
+        instance_path,
+        true,
+        annotation=Json::boolean(true),
+        annotations~,
+      ),
+    ])
   } else {
-    rule_output(
-      false,
-      errors=[
-        output_unit(
-          program,
-          resource,
-          location,
-          instance_path,
-          false,
-          errors~,
-        ),
-      ],
-    )
+    rule_output(false, errors=[
+      output_unit(program, resource, location, instance_path, false, errors~),
+    ])
   }
 }
 
@@ -1184,9 +1076,7 @@ fn collect_object(
           pointer_step(plan.path, "properties"),
           instance_path,
           true,
-          annotation=Json::array(
-            property_names.map(name => Json::string(name)),
-          ),
+          annotation=Json::array(property_names.map(name => Json::string(name))),
           annotations=property_annotations,
         ),
       )
@@ -1293,7 +1183,8 @@ fn collect_object(
               program,
               resource,
               pointer_step(
-                pointer_step(plan.path, "dependentRequired"), trigger,
+                pointer_step(plan.path, "dependentRequired"),
+                trigger,
               ),
               instance_path,
               false,
@@ -1644,18 +1535,16 @@ fn basic_output(tree : OutputUnit) -> OutputUnit {
 ///|
 fn flatten_errors(unit : OutputUnit, into : Array[OutputUnit]) -> Unit {
   if unit.error is Some(_) {
-    into.push(
-      {
-        valid: false,
-        keyword_location: unit.keyword_location,
-        absolute_keyword_location: unit.absolute_keyword_location,
-        instance_location: unit.instance_location,
-        error: unit.error,
-        annotation: None,
-        errors: [],
-        annotations: [],
-      },
-    )
+    into.push({
+      valid: false,
+      keyword_location: unit.keyword_location,
+      absolute_keyword_location: unit.absolute_keyword_location,
+      instance_location: unit.instance_location,
+      error: unit.error,
+      annotation: None,
+      errors: [],
+      annotations: [],
+    })
     return
   }
   for child in unit.errors {
@@ -1666,18 +1555,16 @@ fn flatten_errors(unit : OutputUnit, into : Array[OutputUnit]) -> Unit {
 ///|
 fn flatten_annotations(unit : OutputUnit, into : Array[OutputUnit]) -> Unit {
   if unit.annotation is Some(_) {
-    into.push(
-      {
-        valid: true,
-        keyword_location: unit.keyword_location,
-        absolute_keyword_location: unit.absolute_keyword_location,
-        instance_location: unit.instance_location,
-        error: None,
-        annotation: unit.annotation,
-        errors: [],
-        annotations: [],
-      },
-    )
+    into.push({
+      valid: true,
+      keyword_location: unit.keyword_location,
+      absolute_keyword_location: unit.absolute_keyword_location,
+      instance_location: unit.instance_location,
+      error: None,
+      annotation: unit.annotation,
+      errors: [],
+      annotations: [],
+    })
   }
   for child in unit.annotations {
     flatten_annotations(child, into)

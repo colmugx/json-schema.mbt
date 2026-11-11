@@ -601,27 +601,27 @@ fn compile_node(
           invalid_keyword(location, "expected a string annotation")
         }
         if key != "$comment" {
-          annotations.push({ location, value: owned_json(value) })
+          annotations.push({ location, value: owned_json(value), })
         }
       }
-      "default" => annotations.push({ location, value: owned_json(value) })
+      "default" => annotations.push({ location, value: owned_json(value), })
       "deprecated" | "readOnly" | "writeOnly" => {
         if value != Json::boolean(true) && value != Json::boolean(false) {
           invalid_keyword(location, "expected a boolean annotation")
         }
-        annotations.push({ location, value: owned_json(value) })
+        annotations.push({ location, value: owned_json(value), })
       }
       "examples" => {
         if !(value is Array(_)) {
           invalid_keyword(location, "expected an array annotation")
         }
-        annotations.push({ location, value: owned_json(value) })
+        annotations.push({ location, value: owned_json(value), })
       }
       "contentSchema" => {
         ignore(
           compile_into(index, doc, resource, value, location, depth + 1, limit),
         )
-        annotations.push({ location, value: owned_json(value) })
+        annotations.push({ location, value: owned_json(value), })
       }
       _ => ()
     }

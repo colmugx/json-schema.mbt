@@ -67,29 +67,29 @@ pub fn format_valid(name : String, value : String) -> Bool {
 
 ///|
 fn format_is_digit(ch : Char) -> Bool {
-  ch is '0'..='9'
+  ch is ('0'..<='9')
 }
 
 ///|
 fn format_is_alpha(ch : Char) -> Bool {
-  ch is 'a'..='z' | 'A'..='Z'
+  (ch is ('a'..<='z')) | ('A'..<='Z')
 }
 
 ///|
 fn format_is_alnum(ch : Char) -> Bool {
-  ch is '0'..='9' | 'a'..='z' | 'A'..='Z'
+  (ch is ('0'..<='9')) | ('a'..<='z') | ('A'..<='Z')
 }
 
 ///|
 fn format_is_hex(ch : Char) -> Bool {
-  ch is '0'..='9' | 'a'..='f' | 'A'..='F'
+  (ch is ('0'..<='9')) | ('a'..<='f') | ('A'..<='F')
 }
 
 ///|
 /// Decimal value of a run of ASCII digits. `None` for an empty run, a non-ASCII
 /// digit or any other character; values above 10^9 saturate instead of
 /// overflowing so range decisions stay correct for absurd spellings.
-fn format_uint(text : StringView) -> Int? {
+fn format_uint(text : StringView) -> Int32? {
   if text.is_empty() {
     return None
   }
@@ -127,7 +127,7 @@ fn format_all_digits(text : StringView) -> Bool {
 ///|
 /// Two-digit field at `[start, start + 2)`, or `None` when either position is
 /// not an ASCII digit.
-fn format_two_digits(text : StringView, start : Int32) -> Int? {
+fn format_two_digits(text : StringView, start : Int32) -> Int32? {
   guard text.get_char(start) is Some(high) && format_is_digit(high) else {
     return None
   }

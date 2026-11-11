@@ -47,7 +47,8 @@ fn format_duration(value : String) -> Bool {
         Some('S') => 3
         _ => return false
       }
-      if !(time_rank == 0 || (rank == 2 && time_rank == 1) ||
+      if !(time_rank == 0 ||
+        (rank == 2 && time_rank == 1) ||
         (rank == 3 && time_rank == 2)) {
         return false
       }
@@ -67,7 +68,7 @@ fn format_duration(value : String) -> Bool {
         Some('D') => 3
         _ => return false
       }
-      if !(date_rank == 0 && rank == 1 ||
+      if !((date_rank == 0 && rank == 1) ||
         (rank == 2 && (date_rank == 0 || date_rank == 1)) ||
         (rank == 3 && (date_rank == 0 || date_rank == 2))) {
         return false

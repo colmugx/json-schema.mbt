@@ -217,9 +217,8 @@ pub fn ExactNumber::from_literal(text : String) -> ExactNumber? {
       } else {
         parts.coeff
       }
-      match @bigint.BigInt::from_string(signed) {
-        coeff => Some(Repr(coeff~, scale=parts.scale))
-      }
+      let coeff = try! @string.parse_bigint(signed)
+      Some(Repr(coeff~, scale=parts.scale))
     }
     MalformedLiteral | BudgetExceeded => None
   }
